@@ -14,19 +14,23 @@ int main(int argc, char *argv[])
 
     buffer[strlen(buffer) - 1] = '\0';
 
-
     char* tokens = strtok(buffer, " ");
-    if (strcmp(buffer, "exit") == 0)
+    char* args = strtok(NULL, "");
+    if (tokens == NULL)
+      continue;
+
+    if (strcmp(tokens, "exit") == 0)
       break;
-    else if (strncmp(buffer, "echo", 5) == 0)
+    else if (strcmp(tokens, "echo") == 0)
     {
-      tokens = strtok(NULL, " ");
-      while (tokens != NULL)
-      {
-        printf("%s ", tokens);
-        tokens = strtok(NULL, " ");
-      }
-      printf("\n");
+      printf("%s\n", args);
+    }
+    else if (strcmp(tokens, "type") == 0)
+    {
+      if (!strcmp(args, "exit") || !strcmp(args, "echo") || !strcmp(args, "type"))
+        printf("%s is a shell builtin\n", args);
+      else
+        printf("%s not found\n", args);
     }
     else
     {
