@@ -14,15 +14,24 @@ int main(int argc, char *argv[])
 
     buffer[strlen(buffer) - 1] = '\0';
 
+
+    char* tokens = strtok(buffer, " ");
     if (strcmp(buffer, "exit") == 0)
       break;
-    else if (strcmp(buffer, "echo") == 0)
+    else if (strncmp(buffer, "echo", 5) == 0)
     {
-      char *echo_arguments = buffer + 4;
-      printf("%s\n", echo_arguments);
+      tokens = strtok(NULL, " ");
+      while (tokens != NULL)
+      {
+        printf("%s ", tokens);
+        tokens = strtok(NULL, " ");
+      }
+      printf("\n");
     }
-
-    printf("%s: command not found\n", buffer);
+    else
+    {
+      printf("%s: command not found\n", buffer);
+    }
   }
   return 0;
 }
