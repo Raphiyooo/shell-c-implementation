@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
     fgets(buffer, sizeof(buffer), stdin);
 
     buffer[strlen(buffer) - 1] = '\0';
-    printf("%s: command not found", buffer);
+    printf("%s: command not found\n", buffer);
   }
   return 0;
 }
