@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 int main(int argc, char *argv[])
 {
@@ -27,8 +28,26 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(tokens, "type") == 0)
     {
+      char *name = getenv("PATH");
+      if (name != NULL)
+      {
+        // error checking
+      }
       if (!strcmp(args, "exit") || !strcmp(args, "echo") || !strcmp(args, "type"))
         printf("%s is a shell builtin\n", args);
+      
+      else if (name != NULL)
+      {
+        char* tokens = strtok(name, ':');
+        while (tokens != NULL)
+        {
+          if (access(tokens, X_OK) == 0)
+          {
+            printf("%s is %s\n", args, tokens);
+          }
+          strtok(NULL, ':');
+        }
+      }
       else
         printf("%s not found\n", args);
     }
