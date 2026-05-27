@@ -1,7 +1,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <stdbool.h>
+
+void handleEcho(char* args)
+{
+  printf("%s\n", args);
+}
+
+bool isBuiltIn(char* command)
+{
+  const char* built_ins[] = {
+    "echo",
+    "exit",
+    "type"
+  };
+  size_t num_built_ins = sizeof(built_ins) / sizeof(built_ins[0]);
+  for (size_t i = 0; i < num_built_ins; i++)
+  {
+    if (strcmp(command, built_ins[i]) == 0)
+      return true;
+  }
+  return false;
+}
+
+void handleType(char* args)
+{
+  bool builtIn = isBuiltIn(args);
+  if (builtIn)
+    printf("%s is a shell builtin\n", args);
+  else
+    printf("%s: command not found\n", args);
+}
 
 int main(int argc, char *argv[])
 {
@@ -10,51 +40,28 @@ int main(int argc, char *argv[])
     setbuf(stdout, NULL);
 
     printf("$ ");
-    char buffer[1024];
-    fgets(buffer, sizeof(buffer), stdin);
+    char *line = NULL;
+    size_t cap = 0;
+    getline(&line, &cap, stdin);
+    line[strlen(line) - 1] = '\0';
 
-    buffer[strlen(buffer) - 1] = '\0';
-
-    char* tokens = strtok(buffer, " ");
-    char* args = strtok(NULL, "");
-    if (tokens == NULL)
+    char* save_input = NULL;
+    char* input = strtok_r(line, " ", &save_input);
+    if (input == NULL)
       continue;
+    // points to the first non input word in the line
+    char* args = save_input;
 
-    if (strcmp(tokens, "exit") == 0)
+    if (strcmp(input, "exit") == 0)
       break;
-    else if (strcmp(tokens, "echo") == 0)
-    {
-      printf("%s\n", args);
-    }
-    else if (strcmp(tokens, "type") == 0)
-    {
-      char *name = getenv("PATH");
-      if (name != NULL)
-      {
-        // error checking
-      }
-      if (!strcmp(args, "exit") || !strcmp(args, "echo") || !strcmp(args, "type"))
-        printf("%s is a shell builtin\n", args);
-      
-      else if (name != NULL)
-      {
-        char* tokens = strtok(name, ':');
-        while (tokens != NULL)
-        {
-          if (access(tokens, X_OK) == 0)
-          {
-            printf("%s is %s\n", args, tokens);
-          }
-          strtok(NULL, ':');
-        }
-      }
-      else
-        printf("%s not found\n", args);
-    }
+    else if (strcmp(input, "echo") == 0)
+      handleEcho(args);
+    else if (strcmp(input, "type") == 0)
+      handleType(args);
     else
-    {
-      printf("%s: command not found\n", buffer);
-    }
+      printf("%s: command not found\n", line);
+
+    free(line);
   }
   return 0;
 }
