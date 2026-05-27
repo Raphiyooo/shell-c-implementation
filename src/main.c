@@ -43,7 +43,7 @@ bool locateExecutableFiles(char* command)
 {
   char* paths_env = getenv("PATH");
   if (paths_env == NULL)
-    return;
+    return true;
   // needed so i dont modify the system
   char* paths_env_copy = strdup(paths_env);
 
