@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 void handleEcho(char* args)
 {
@@ -24,13 +25,54 @@ bool isBuiltIn(char* command)
   return false;
 }
 
+void addCommand(char** full_path, char* path, char* command)
+{
+  *full_path = (char*) malloc(strlen(path) + 1 + strlen(command) + 1);
+  if (!full_path)
+    return;
+  sprintf(*full_path, "%s/%s", path, command);
+}
+
+void locateExecutableFiles(char* command)
+{
+  char* paths_env = getenv("PATH");
+  if (paths_env == NULL)
+    return;
+  // needed so i dont modify the system
+  char* paths_env_copy = strdup(paths_env);
+
+  char* save_paths = NULL;
+  char* path = strtok_r(paths_env_copy, ":", &save_paths);
+  while (path != NULL)
+  {
+    char* full_path = NULL;
+    addCommand(&full_path, path, command);
+    if (access(full_path, F_OK) == 0)
+    {
+      if (access(full_path, X_OK) == 0)
+      {
+        printf("%s is %s\n", command, full_path);
+        free(paths_env_copy);
+        free(full_path);
+        return;
+      }
+    }
+    free(full_path);
+    path = strtok_r(NULL, ":", &save_paths);
+  }
+  free(paths_env_copy);
+  printf("%s: not found\n", command);
+}
+
 void handleType(char* args)
 {
   bool builtIn = isBuiltIn(args);
   if (builtIn)
     printf("%s is a shell builtin\n", args);
   else
-    printf("%s: command not found\n", args);
+  {
+    locateExecutableFiles(args);
+  }
 }
 
 int main(int argc, char *argv[])
