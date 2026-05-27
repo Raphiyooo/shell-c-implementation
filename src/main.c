@@ -4,6 +4,12 @@
 #include <stdbool.h>
 #include <unistd.h>
 
+#ifdef _WIN32
+  #define PATHSEP ";"
+#else
+  #define PATHSEP ":"
+#endif
+
 void handleEcho(char* args)
 {
   printf("%s\n", args);
@@ -33,7 +39,7 @@ void addCommand(char** full_path, char* path, char* command)
   sprintf(*full_path, "%s/%s", path, command);
 }
 
-void locateExecutableFiles(char* command)
+bool locateExecutableFiles(char* command)
 {
   char* paths_env = getenv("PATH");
   if (paths_env == NULL)
@@ -42,7 +48,7 @@ void locateExecutableFiles(char* command)
   char* paths_env_copy = strdup(paths_env);
 
   char* save_paths = NULL;
-  char* path = strtok_r(paths_env_copy, ":", &save_paths);
+  char* path = strtok_r(paths_env_copy, PATHSEP, &save_paths);
   while (path != NULL)
   {
     char* full_path = NULL;
@@ -54,14 +60,14 @@ void locateExecutableFiles(char* command)
         printf("%s is %s\n", command, full_path);
         free(paths_env_copy);
         free(full_path);
-        return;
+        return true;
       }
     }
     free(full_path);
-    path = strtok_r(NULL, ":", &save_paths);
+    path = strtok_r(NULL, PATHSEP, &save_paths);
   }
   free(paths_env_copy);
-  printf("%s: not found\n", command);
+  return false;
 }
 
 void handleType(char* args)
@@ -69,10 +75,8 @@ void handleType(char* args)
   bool builtIn = isBuiltIn(args);
   if (builtIn)
     printf("%s is a shell builtin\n", args);
-  else
-  {
-    locateExecutableFiles(args);
-  }
+  else if (!locateExecutableFiles(args))
+    printf("%s: not found\n", args);
 }
 
 int main(int argc, char *argv[])
