@@ -10,6 +10,8 @@
   #define PATHSEP ":"
 #endif
 
+bool handleExternalPrograms(char* args);
+
 void handleEcho(char* args)
 {
   printf("%s\n", args);
