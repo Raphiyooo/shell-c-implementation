@@ -34,16 +34,16 @@ bool isBuiltIn(char* command)
 void addCommand(char** full_path, char* path, char* command)
 {
   *full_path = (char*) malloc(strlen(path) + 1 + strlen(command) + 1);
-  if (!full_path)
+  if (!(*full_path))
     return;
   sprintf(*full_path, "%s/%s", path, command);
 }
 
-bool locateExecutableFiles(char* command)
+bool locateExecutableFiles(char* args, char** full_path)
 {
   char* paths_env = getenv("PATH");
   if (paths_env == NULL)
-    return true;
+    return false;
   // needed so i dont modify the system
   char* paths_env_copy = strdup(paths_env);
 
@@ -51,32 +51,73 @@ bool locateExecutableFiles(char* command)
   char* path = strtok_r(paths_env_copy, PATHSEP, &save_paths);
   while (path != NULL)
   {
-    char* full_path = NULL;
-    addCommand(&full_path, path, command);
-    if (access(full_path, F_OK) == 0)
+    if (*full_path != NULL)
     {
-      if (access(full_path, X_OK) == 0)
+      free(*full_path);
+      *full_path = NULL;
+    }
+    addCommand(full_path, path, args);
+    if (access(*full_path, F_OK) == 0)
+    {
+      if (access(*full_path, X_OK) == 0)
       {
-        printf("%s is %s\n", command, full_path);
         free(paths_env_copy);
-        free(full_path);
         return true;
       }
     }
-    free(full_path);
     path = strtok_r(NULL, PATHSEP, &save_paths);
   }
+  if (*full_path != NULL)
+  {
+    free(*full_path);
+    *full_path = NULL;
+  }
+
   free(paths_env_copy);
   return false;
 }
 
 void handleType(char* args)
 {
+  char* full_path = NULL;
   bool builtIn = isBuiltIn(args);
+  bool got_executable = locateExecutableFiles(args, &full_path);
   if (builtIn)
     printf("%s is a shell builtin\n", args);
-  else if (!locateExecutableFiles(args))
+  else if (got_executable)
+    printf("%s is %s\n", args, full_path);
+  else
     printf("%s: not found\n", args);
+
+  if (full_path != NULL)
+    free(full_path);
+}
+
+void executeProgram(char* system_path)
+{
+  int succeed = system(system_path);
+  if (succeed != 0)
+    return; // if not 0 it didnt succeed
+}
+
+bool handleExternalPrograms(char* args)
+{
+  char* full_path = NULL;
+  bool found = locateExecutableFiles(args, &full_path);
+
+  if (found)
+  {
+    char* system_path = NULL;
+    sprintf(system_path, "%s %s", full_path, args);
+    executeProgram(system_path);
+    free(system_path);
+  }
+  else
+    return false;
+
+  if (full_path != NULL)
+    free(full_path);
+  return true;
 }
 
 int main(int argc, char *argv[])
@@ -92,20 +133,25 @@ int main(int argc, char *argv[])
     line[strlen(line) - 1] = '\0';
 
     char* save_input = NULL;
-    char* input = strtok_r(line, " ", &save_input);
-    if (input == NULL)
+    char* command = strtok_r(line, " ", &save_input);
+    if (command == NULL)
       continue;
     // points to the first non input word in the line
     char* args = save_input;
 
-    if (strcmp(input, "exit") == 0)
+    if (strcmp(command, "exit") == 0)
       break;
-    else if (strcmp(input, "echo") == 0)
+    else if (strcmp(command, "echo") == 0)
       handleEcho(args);
-    else if (strcmp(input, "type") == 0)
+    else if (strcmp(command, "type") == 0)
       handleType(args);
     else
-      printf("%s: command not found\n", line);
+    {
+      if (handleExternalProgams(args))
+        continue;
+      else
+        printf("%s: command not found\n", line);
+    }
 
     free(line);
   }
