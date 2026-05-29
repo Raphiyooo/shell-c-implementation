@@ -100,16 +100,16 @@ void executeProgram(char* system_path)
     return; // if not 0 it didnt succeed
 }
 
-bool handleExternalPrograms(char* command, char* args)
+bool handleExternalPrograms(char* command, char* args, char* line)
 {
   char* full_path = NULL;
   bool found = locateExecutableFiles(command, &full_path);
 
   if (found)
   {
-    char system_path[1024];
-    snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
-    executeProgram(system_path);
+    // char system_path[1024];
+    // snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
+    executeProgram(line);
   }
   else
     return false;
@@ -175,9 +175,9 @@ int main(int argc, char* argv[])
       handleType(args);
     else
     {
-      if (handleExternalPrograms(command, args))
+      if (handleExternalPrograms(command, args, line))
       {
-        printTextExternalProgram(command, args);
+        // printTextExternalProgram(command, args);
         free(line);
         continue;
       }
