@@ -110,7 +110,6 @@ bool handleExternalPrograms(char* command, char* args)
     char system_path[1024];
     snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
     executeProgram(system_path);
-    free(system_path);
   }
   else
     return false;
@@ -120,10 +119,13 @@ bool handleExternalPrograms(char* command, char* args)
   return true;
 }
 
-void printTextExternalProgram(char* args)
+void printTextExternalProgram(char* command, char* args)
 {
   char* args_indexed[64];
   size_t args_count = 0;
+
+  args_indexed[args_count] = command;
+  ++args_count;
 
   char* save_token = NULL;
   char* token = strtok_r(args, " ", &save_token);
@@ -134,14 +136,15 @@ void printTextExternalProgram(char* args)
     token = strtok_r(NULL, " ", &save_token);
   }
 
-  printf("Program was passed %d args (including program name).\n", args_count);
-  for (size_t i = 0; i < args_count; i++)
+  printf("Program was passed %d args (including program name).\n", (int)args_count);
+  for (int i = 0; i < args_count; i++)
   {
     if (i == 0)
       printf("Arg #%d (program name): %s\n", i, args_indexed[i]);
     else
       printf("Arg #%d: %s\n", i, args_indexed[i]);
   }
+
   
 }
 
@@ -174,7 +177,8 @@ int main(int argc, char* argv[])
     {
       if (handleExternalPrograms(command, args))
       {
-        printTextExternalProgram(args);
+        printTextExternalProgram(command, args);
+        free(line);
         continue;
       }
       else
