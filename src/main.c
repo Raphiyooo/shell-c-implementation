@@ -109,6 +109,16 @@ bool handleExternalPrograms(char* command, char* args, char* line)
   {
     // char system_path[1024];
     // snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
+    char system_path[2048];
+    
+    if (args != NULL && *args != '\0') 
+    {
+      snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
+    } 
+    else 
+    {
+      snprintf(system_path, sizeof(system_path), "%s", full_path);
+    }
     executeProgram(line);
   }
   else
