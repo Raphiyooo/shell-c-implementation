@@ -120,7 +120,32 @@ bool handleExternalPrograms(char* command, char* args)
   return true;
 }
 
-int main(int argc, char *argv[])
+void printTextExternalProgram(char* args)
+{
+  char* args_indexed[64];
+  size_t args_count = 0;
+
+  char* save_token = NULL;
+  char* token = strtok_r(args, " ", &save_token);
+  while (token != NULL && args_count < 63)
+  {
+    args_indexed[args_count] = token;
+    ++args_count;
+    token = strtok_r(NULL, " ", &save_token);
+  }
+
+  printf("Program was passed %d args (including program name).\n", args_count);
+  for (size_t i = 0; i < args_count; i++)
+  {
+    if (i == 0)
+      printf("Arg #%d (program name): %s\n", i, args_indexed[i]);
+    else
+      printf("Arg #%d: %s\n", i, args_indexed[i]);
+  }
+  
+}
+
+int main(int argc, char* argv[])
 {
   while (1)
   {
@@ -148,7 +173,10 @@ int main(int argc, char *argv[])
     else
     {
       if (handleExternalPrograms(command, args))
+      {
+        printTextExternalProgram(args);
         continue;
+      }
       else
         printf("%s: command not found\n", command);
     }
