@@ -119,7 +119,7 @@ bool handleExternalPrograms(char* command, char* args, char* line)
     {
       snprintf(system_path, sizeof(system_path), "%s", full_path);
     }
-    executeProgram(line);
+    executeProgram(system_path);
   }
   else
     return false;
