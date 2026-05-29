@@ -100,15 +100,15 @@ void executeProgram(char* system_path)
     return; // if not 0 it didnt succeed
 }
 
-bool handleExternalPrograms(char* args)
+bool handleExternalPrograms(char* command, char* args)
 {
   char* full_path = NULL;
-  bool found = locateExecutableFiles(args, &full_path);
+  bool found = locateExecutableFiles(command, &full_path);
 
   if (found)
   {
-    char* system_path = NULL;
-    sprintf(system_path, "%s %s", full_path, args);
+    char system_path[1024];
+    snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
     executeProgram(system_path);
     free(system_path);
   }
@@ -147,10 +147,10 @@ int main(int argc, char *argv[])
       handleType(args);
     else
     {
-      if (handleExternalPrograms(args))
+      if (handleExternalPrograms(command, args))
         continue;
       else
-        printf("%s: command not found\n", line);
+        printf("%s: command not found\n", command);
     }
 
     free(line);
