@@ -10,8 +10,6 @@
   #define PATHSEP ":"
 #endif
 
-bool handleExternalPrograms(char* args);
-
 void handleEcho(char* args)
 {
   printf("%s\n", args);
@@ -149,7 +147,7 @@ int main(int argc, char *argv[])
       handleType(args);
     else
     {
-      if (handleExternalProgams(args))
+      if (handleExternalPrograms(args))
         continue;
       else
         printf("%s: command not found\n", line);
