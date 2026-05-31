@@ -179,6 +179,8 @@ int main(int argc, char* argv[])
 
     free(line_copy);
     free(line);
+
+    
     line = NULL;
   }
   return 0;
