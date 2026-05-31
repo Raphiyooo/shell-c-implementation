@@ -145,13 +145,19 @@ int main(int argc, char* argv[])
     printf("$ ");
     char *line = NULL;
     size_t cap = 0;
-    getline(&line, &cap, stdin);
+    if (getline(&line, &cap, stdin) == -1)
+      break;
     line[strlen(line) - 1] = '\0';
 
+    char* line_copy = strdup(line);
+
     char* save_input = NULL;
-    char* command = strtok_r(line, " ", &save_input);
+    char* command = strtok_r(line_copy, " ", &save_input);
     if (command == NULL)
+    {
+      free(line_copy);
       continue;
+    }
     // points to the first non input word in the line
     char* args = save_input;
 
@@ -164,14 +170,16 @@ int main(int argc, char* argv[])
     else
     {
       char* full_path = NULL;
-      bool is_executable = locateExecutableFiles(args, &full_path);
+      bool is_executable = locateExecutableFiles(command, &full_path);
       if (is_executable)
         buildArgsArrayCallExecute(command, args, full_path);
       else
         printf("%s: command not found\n", command);
     }
 
+    free(line_copy);
     free(line);
+    line = NULL;
   }
   return 0;
 }
