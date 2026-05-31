@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #ifdef _WIN32
   #define PATHSEP ";"
