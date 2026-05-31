@@ -10,6 +10,8 @@
   #define PATHSEP ":"
 #endif
 
+extern char** environ;
+
 void handleEcho(char* args)
 {
   printf("%s\n", args);
@@ -93,69 +95,43 @@ void handleType(char* args)
     free(full_path);
 }
 
-void executeProgram(char* system_path)
+void executeProgram(char* full_path, char* tokenized_args_array[])
 {
-  int succeed = system(system_path);
-  if (succeed != 0)
-    return; // if not 0 it didnt succeed
-}
-
-bool handleExternalPrograms(char* command, char* args, char* line)
-{
-  char* full_path = NULL;
-  bool found = locateExecutableFiles(command, &full_path);
-
-  if (found)
+  pid_t pid;
+  pid = fork();
+  if (pid == -1)
+    perror("Error while forking");
+  else if (pid == 0)
   {
-    // char system_path[1024];
-    // snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
-    char system_path[2048];
-    
-    if (args != NULL && *args != '\0') 
+    if (execve(full_path, tokenized_args_array, environ) == -1)
     {
-      snprintf(system_path, sizeof(system_path), "%s %s", full_path, args);
-    } 
-    else 
-    {
-      snprintf(system_path, sizeof(system_path), "%s", full_path);
+      perror("Could not execute execve");
+      exit(1);
     }
-    executeProgram(system_path);
   }
   else
-    return false;
-
-  if (full_path != NULL)
-    free(full_path);
-  return true;
+  {
+    int status;
+    waitpid(pid, &status, 0);
+  }
 }
 
-void printTextExternalProgram(char* command, char* args)
+void buildArgsArrayCallExecute(char* first_word, char* args, char* full_path)
 {
-  char* args_indexed[64];
-  size_t args_count = 0;
+  size_t counter = 0;
+  char* tokenized_args_array[64] = {NULL};
+  tokenized_args_array[counter++] = first_word;
 
-  args_indexed[args_count] = command;
-  ++args_count;
-
-  char* save_token = NULL;
-  char* token = strtok_r(args, " ", &save_token);
-  while (token != NULL && args_count < 63)
+  char* save_args = NULL;
+  char* token = strtok_r(args, " ", &save_args);
+  while (token != NULL)
   {
-    args_indexed[args_count] = token;
-    ++args_count;
-    token = strtok_r(NULL, " ", &save_token);
+    tokenized_args_array[counter++] = token;
+    token = strtok_r(NULL, " ", &save_args);
   }
-
-  printf("Program was passed %d args (including program name).\n", (int)args_count);
-  for (int i = 0; i < args_count; i++)
-  {
-    if (i == 0)
-      printf("Arg #%d (program name): %s\n", i, args_indexed[i]);
-    else
-      printf("Arg #%d: %s\n", i, args_indexed[i]);
-  }
-
+  tokenized_args_array[counter] = NULL;
   
+  executeProgram(full_path, tokenized_args_array);
 }
 
 int main(int argc, char* argv[])
@@ -185,12 +161,10 @@ int main(int argc, char* argv[])
       handleType(args);
     else
     {
-      if (handleExternalPrograms(command, args, line))
-      {
-        // printTextExternalProgram(command, args);
-        free(line);
-        continue;
-      }
+      char* full_path = NULL;
+      bool is_executable = locateExecutableFiles(args, &full_path);
+      if (is_executable)
+        buildArgsArrayCallExecute(command, args, full_path);
       else
         printf("%s: command not found\n", command);
     }
