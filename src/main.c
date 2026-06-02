@@ -136,6 +136,15 @@ void buildArgsArrayCallExecute(char* first_word, char* args, char* full_path)
   executeProgram(full_path, tokenized_args_array);
 }
 
+void handlePwd()
+{
+  char full_path_cur_dir[1024] = "";
+  if (getcwd(full_path_cur_dir, sizeof(full_path_cur_dir)) == NULL)
+    perror("Can't get current directory");
+  else
+    printf("%s\n", full_path_cur_dir);
+}
+
 int main(int argc, char* argv[])
 {
   while (1)
@@ -167,6 +176,8 @@ int main(int argc, char* argv[])
       handleEcho(args);
     else if (strcmp(command, "type") == 0)
       handleType(args);
+    else if (strcmp(command, "pwd") == 0)
+      handlePwd();
     else
     {
       char* full_path = NULL;
