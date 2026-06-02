@@ -24,7 +24,8 @@ bool isBuiltIn(char* command)
   const char* built_ins[] = {
     "echo",
     "exit",
-    "type"
+    "type",
+    "pwd"
   };
   size_t num_built_ins = sizeof(built_ins) / sizeof(built_ins[0]);
   for (size_t i = 0; i < num_built_ins; i++)
