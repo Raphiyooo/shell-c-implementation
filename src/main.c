@@ -188,7 +188,11 @@ void handleQuotes(char* args, char output[])
     {
       if (single_quote == true)
         output[idx++] = *args;
-      // handle this
+      else
+      {
+        if ((idx > 0) && (output[idx - 1] != ' '))
+          output[idx++] = ' ';
+      }
     }
     else
       output[idx++] = *args;
@@ -209,6 +213,19 @@ void handleEcho(char* args)
     handleQuotes(args, output);
   
     printf("%s\n", output);
+}
+
+void handleCat(char* args)
+{
+  char content[1024];
+  FILE *file_ptr = fopen(args, "r");
+  size_t bytes_read = 1;
+  while ((bytes_read = fread(content, sizeof(char), sizeof(content) - 1, file_ptr)) > 0)
+  {
+    content[bytes_read] = '\0';
+    printf("%s", content);
+  }
+  fclose(file_ptr);
 }
 
 int main(int argc, char* argv[])
@@ -246,6 +263,8 @@ int main(int argc, char* argv[])
       handlePwd();
     else if (strcmp(command, "cd") == 0)
       handleCd(args);
+    else if (strcmp(command, "cat") == 0)
+      handleCat(args);
     else
     {
       char* full_path = NULL;
