@@ -230,6 +230,7 @@ void handleCat(char* args)
       if (single_quote == true)
       {
         output_tokens[output_idx] = output;
+        output[idx] = '\0';
         output = NULL;
         single_quote = false;
       }
@@ -250,8 +251,18 @@ void handleCat(char* args)
       output[idx++] = *args;
     args++;
   }
+  for (size_t i = 0; i < output_idx; i++)
+  {
+    FILE* file_ptr = fopen(output_tokens[output_idx], "r");
+    size_t read_bytes = 1;
+    char text_in_file[1024];
+    while ((read_bytes = fread(text_in_file, sizeof(char), sizeof(text_in_file) - 1, file_ptr)) != 0)
+    {
+      text_in_file[read_bytes] = '\0';
+      printf("%s", text_in_file);
+    }
+  }
   
-  output[idx] = '\0';
 }
 
 int main(int argc, char* argv[])
