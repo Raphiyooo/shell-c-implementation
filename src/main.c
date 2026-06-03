@@ -192,8 +192,8 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
           output[token_idx][char_idx] = '\0';
           token_idx++;
           char_idx = 0;
-          single_quote = false;
         }
+        single_quote = false;
       }
       else
         single_quote = true;
