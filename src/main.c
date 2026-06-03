@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -19,11 +20,6 @@
 #endif
 
 extern char** environ;
-
-void handleEcho(char* args)
-{
-  printf("%s\n", args);
-}
 
 bool isBuiltIn(char* command)
 {
@@ -161,7 +157,60 @@ void handleCd(char* args)
     home_path = args;
   if (chdir(home_path) != 0)
     printf("cd: %s: No such file or directory\n", home_path);
+}
+
+void trimSpaces(char trimmed[], const char* str)
+{
+  if (str == NULL) return;
+  int idx = 0;
+  while (*str != '\0')
+  {
+    if (!(*str == ' '))
+      trimmed[idx++] = *str;
+    else
+      if ((idx > 0) && (trimmed[idx - 1] != ' '))
+        trimmed[idx++] = ' ';
+    str++;
+  }
+  trimmed[idx] = '\0';
+}
+
+
+
+void handleQuotes(char* args, char output[])
+{
+  int single_quote_ascii = '\'';
+  int idx = 0;
+  bool single_quote = false;
+  while (*args != '\0')
+  {
+    if (*args == single_quote_ascii)
+      single_quote = !single_quote;
+    else if (isspace(*args))
+    {
+      if (single_quote == true)
+        output[idx++] = *args;
+      // handle this
+    }
+    else
+      output[idx++] = *args;
+    args++;
+  }
   
+  output[idx] = '\0';
+
+}
+void handleEcho(char* args)
+{
+  int single_quote_ascii = '\'';
+  char* contains_single_quote = strchr(args, single_quote_ascii);
+  char output[1024] = "";
+  if (contains_single_quote == NULL)
+    trimSpaces(output, args);
+  else
+    handleQuotes(args, output);
+  
+    printf("%s\n", output);
 }
 
 int main(int argc, char* argv[])
