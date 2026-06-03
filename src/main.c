@@ -175,8 +175,6 @@ void trimSpaces(char trimmed[], const char* str)
   trimmed[idx] = '\0';
 }
 
-
-
 void handleQuotes(char* args, char output[])
 {
   int single_quote_ascii = '\'';
@@ -198,8 +196,8 @@ void handleQuotes(char* args, char output[])
   }
   
   output[idx] = '\0';
-
 }
+
 void handleEcho(char* args)
 {
   int single_quote_ascii = '\'';
