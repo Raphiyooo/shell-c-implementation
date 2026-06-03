@@ -185,18 +185,7 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
   {
     if (*args == single_quote_ascii)
     {
-      if (single_quote)
-      {
-        if ((*(args + 1)) != '\0' && !isspace((*(args + 1))))
-        {
-          output[token_idx][char_idx] = '\0';
-          token_idx++;
-          char_idx = 0;
-        }
-        single_quote = false;
-      }
-      else
-        single_quote = true;
+      single_quote = !single_quote;
     } 
     else if (isspace(*args))
     {
@@ -204,23 +193,14 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
         output[token_idx][char_idx++] = *args;
       else
       {
-        if (char_idx > 0)
-        {
-          output[token_idx][char_idx] = '\0';
-          token_idx++;
-          char_idx++;
-        }
+
       }
     }
     else
       output[token_idx][char_idx++] = *args;
     args++;
   }
-  if (char_idx > 0)
-  {
-    output[token_idx][char_idx] = '\0';
-    token_idx++;
-  }
+
   *amount_tokens = token_idx;
 }
 
