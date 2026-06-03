@@ -217,7 +217,7 @@ void handleEcho(char* args)
 
 void handleCat(char* args)
 {
-  char* output_tokens[] = {NULL};
+  char* output_tokens[1024];
   int output_idx = 0;
   char* output = NULL;
   int single_quote_ascii = '\'';
@@ -261,6 +261,7 @@ void handleCat(char* args)
       text_in_file[read_bytes] = '\0';
       printf("%s", text_in_file);
     }
+    fclose(file_ptr);
   }
   
 }
