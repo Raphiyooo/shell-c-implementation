@@ -187,7 +187,7 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
     {
       if (single_quote)
       {
-        if ((*(args + 1)) != '\0' && !isspace((*(args + 1))))
+        if (strchr(args, single_quote_ascii) != NULL)
         {
           output[token_idx][char_idx] = '\0';
           token_idx++;
