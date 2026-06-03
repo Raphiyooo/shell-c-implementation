@@ -212,20 +212,14 @@ void handleEcho(char* args)
   else
     handleQuotes(args, output);
   
-    printf("%s\n", output);
+  printf("%s\n", output);
 }
 
 void handleCat(char* args)
 {
   char content[1024];
-  FILE *file_ptr = fopen(args, "r");
-  size_t bytes_read = 1;
-  while ((bytes_read = fread(content, sizeof(char), sizeof(content) - 1, file_ptr)) > 0)
-  {
-    content[bytes_read] = '\0';
-    printf("%s", content);
-  }
-  fclose(file_ptr);
+
+  // cat is called with more parameters, need to parse args according to that
 }
 
 int main(int argc, char* argv[])
