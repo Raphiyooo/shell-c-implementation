@@ -12,6 +12,12 @@
   #define PATHSEP ":"
 #endif
 
+#ifdef _WIN32
+  #define HOMEPATH "USERPROFILE"
+#else
+  #define HOMEPATH "HOME"
+#endif
+
 extern char** environ;
 
 void handleEcho(char* args)
@@ -148,8 +154,13 @@ void handlePwd()
 
 void handleCd(char* args)
 {
-  if (chdir(args) != 0)
-    printf("cd: %s: No such file or directory\n", args);
+  char* home_path = NULL;
+  if (strcmp(args, "~") == 0)
+    home_path = getenv(HOMEPATH);
+  else
+    home_path = args;
+  if (chdir(home_path) != 0)
+    printf("cd: %s: No such file or directory\n", home_path);
   
 }
 
