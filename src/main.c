@@ -204,9 +204,8 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
         output[token_idx][char_idx++] = *args;
       else
       {
-        output[token_idx][char_idx] = '\0';
-        token_idx++;
-        char_idx = 0;
+        if ((char_idx > 0) && (args[char_idx - 1] != ' '))
+          output[token_idx][char_idx++] = ' ';
       }
     }
     else
