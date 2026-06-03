@@ -217,9 +217,41 @@ void handleEcho(char* args)
 
 void handleCat(char* args)
 {
-  char content[1024];
-
-  // cat is called with more parameters, need to parse args according to that
+  char* output_tokens[] = {NULL};
+  int output_idx = 0;
+  char* output = NULL;
+  int single_quote_ascii = '\'';
+  int idx = 0;
+  bool single_quote = false;
+  while (*args != '\0')
+  {
+    if (*args == single_quote_ascii)
+    {
+      if (single_quote == true)
+      {
+        output_tokens[output_idx] = output;
+        output = NULL;
+        single_quote = false;
+      }
+      else
+        single_quote = true;
+    }
+    else if (isspace(*args))
+    {
+      if (single_quote == true)
+        output[idx++] = *args;
+      else
+      {
+        if ((idx > 0) && (output[idx - 1] != ' '))
+          output[idx++] = ' ';
+      }
+    }
+    else
+      output[idx++] = *args;
+    args++;
+  }
+  
+  output[idx] = '\0';
 }
 
 int main(int argc, char* argv[])
