@@ -185,25 +185,39 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
   {
     if (*args == single_quote_ascii)
     {
+      if (single_quote)
+      {
+        if ((*(args + 1)) != '\0' && !isspace((*(args + 1))))
+        {
+          output[token_idx][char_idx] = '\0';
+          token_idx++;
+          char_idx = 0;
+          single_quote = false;
+        }
+      }
+      else
+        single_quote = true;
+    } 
+    else if (isspace(*args))
+    {
       if (single_quote == true)
+        output[token_idx][char_idx++] = *args;
+      else
       {
         output[token_idx][char_idx] = '\0';
         token_idx++;
         char_idx = 0;
-        single_quote = false;
       }
-    } 
-    else if (isspace(*args) && !single_quote)
-    {
-      continue;
     }
     else
-    {
-      output[token_idx][char_idx] = *args;
-    }
+      output[token_idx][char_idx++] = *args;
     args++;
   }
-
+  if (char_idx > 0)
+  {
+    output[token_idx][char_idx] = '\0';
+    token_idx++;
+  }
   *amount_tokens = token_idx;
 }
 
@@ -211,22 +225,29 @@ void handleEcho(char* args)
 {
   int single_quote_ascii = '\'';
   char* contains_single_quote = strchr(args, single_quote_ascii);
-  char output[10][1024] = "";
+  char output[10][1024];
+  char output_trimmed[1024];
   int amount_tokens = 0;
   if (contains_single_quote == NULL)
-    trimSpaces(output, args);
-  else
-    handleQuotes(args, output, &amount_tokens);
-  for (size_t i = 0; i < amount_tokens; i++)
   {
-    printf("%s", output[i]);
+    trimSpaces(output_trimmed, args);
+    printf("%s", output_trimmed);
   }
+  else
+  {
+    handleQuotes(args, output, &amount_tokens);
+    for (size_t i = 0; i < amount_tokens; i++)
+    {
+      printf("%s", output[i]);
+    }
+  }
+
   printf("\n");
 }
 
 void handleCat(char* args)
 {
-  char output[10][1024] = "";
+  char output[10][1024];
   int amount_tokens = 0;
   handleQuotes(args, output, &amount_tokens);
   for (size_t i = 0; i < amount_tokens; i++)
