@@ -146,6 +146,11 @@ void handlePwd()
     printf("%s\n", full_path_cur_dir);
 }
 
+void handleCd(char* args)
+{
+  chdir(args);
+}
+
 int main(int argc, char* argv[])
 {
   while (1)
@@ -179,6 +184,8 @@ int main(int argc, char* argv[])
       handleType(args);
     else if (strcmp(command, "pwd") == 0)
       handlePwd();
+    else if (strcmp(command, "cd") == 0)
+      handleCd(args);
     else
     {
       char* full_path = NULL;
