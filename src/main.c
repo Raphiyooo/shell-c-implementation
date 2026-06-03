@@ -175,85 +175,68 @@ void trimSpaces(char trimmed[], const char* str)
   trimmed[idx] = '\0';
 }
 
-void handleQuotes(char* args, char output[])
+void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
 {
   int single_quote_ascii = '\'';
-  int idx = 0;
+  int token_idx = 0;
+  int char_idx = 0;
   bool single_quote = false;
   while (*args != '\0')
   {
     if (*args == single_quote_ascii)
-      single_quote = !single_quote;
-    else if (isspace(*args))
     {
       if (single_quote == true)
-        output[idx++] = *args;
-      else
       {
-        if ((idx > 0) && (output[idx - 1] != ' '))
-          output[idx++] = ' ';
+        output[token_idx][char_idx] = '\0';
+        token_idx++;
+        char_idx = 0;
+        single_quote = false;
       }
+    } 
+    else if (isspace(*args) && !single_quote)
+    {
+      continue;
     }
     else
-      output[idx++] = *args;
+    {
+      output[token_idx][char_idx] = *args;
+    }
     args++;
   }
-  
-  output[idx] = '\0';
+
+  *amount_tokens = token_idx;
 }
 
 void handleEcho(char* args)
 {
   int single_quote_ascii = '\'';
   char* contains_single_quote = strchr(args, single_quote_ascii);
-  char output[1024] = "";
+  char output[10][1024] = "";
+  int amount_tokens = 0;
   if (contains_single_quote == NULL)
     trimSpaces(output, args);
   else
-    handleQuotes(args, output);
-  
-  printf("%s\n", output);
+    handleQuotes(args, output, &amount_tokens);
+  for (size_t i = 0; i < amount_tokens; i++)
+  {
+    printf("%s", output[i]);
+  }
+  printf("\n");
 }
 
 void handleCat(char* args)
 {
-  char* output_tokens[1024];
-  int output_idx = 0;
-  char* output = NULL;
-  int single_quote_ascii = '\'';
-  int idx = 0;
-  bool single_quote = false;
-  while (*args != '\0')
+  char output[10][1024] = "";
+  int amount_tokens = 0;
+  handleQuotes(args, output, &amount_tokens);
+  for (size_t i = 0; i < amount_tokens; i++)
   {
-    if (*args == single_quote_ascii)
+    FILE* file_ptr = fopen(output[i], "r");
+    if (file_ptr == NULL)
     {
-      if (single_quote == true)
-      {
-        output[idx] = '\0';
-        output_tokens[output_idx] = output;
-        output = NULL;
-        single_quote = false;
-      }
-      else
-        single_quote = true;
+      perror("file not found");
+      continue;
     }
-    else if (isspace(*args))
-    {
-      if (single_quote == true)
-        output[idx++] = *args;
-      else
-      {
-        if ((idx > 0) && (output[idx - 1] != ' '))
-          output[idx++] = ' ';
-      }
-    }
-    else
-      output[idx++] = *args;
-    args++;
-  }
-  for (size_t i = 0; i < output_idx; i++)
-  {
-    FILE* file_ptr = fopen(output_tokens[output_idx], "r");
     size_t read_bytes = 1;
     char text_in_file[1024];
     while ((read_bytes = fread(text_in_file, sizeof(char), sizeof(text_in_file) - 1, file_ptr)) != 0)
