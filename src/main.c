@@ -229,8 +229,8 @@ void handleCat(char* args)
     {
       if (single_quote == true)
       {
-        output_tokens[output_idx] = output;
         output[idx] = '\0';
+        output_tokens[output_idx] = output;
         output = NULL;
         single_quote = false;
       }
