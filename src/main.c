@@ -149,7 +149,7 @@ void handlePwd()
 void handleCd(char* args)
 {
   if (chdir(args) != 0)
-    printf("cd: %s: No such file or directory", args);
+    printf("cd: %s: No such file or directory\n", args);
   
 }
 
