@@ -234,7 +234,7 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
     {
       if (single_quote)
       {
-        printf("ab");
+        output[token_idx][char_idx++] = *args;
       }
       else if (double_quote)
       {
