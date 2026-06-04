@@ -193,28 +193,16 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
       {
         output[token_idx][char_idx++] = '\'';
       }
-      else if (single_quote || double_quote)
+      else if (*args == double_quote_ascii && single_quote == true)
       {
-        output[token_idx++][char_idx] = '\0';
-        char_idx = 0;
-        single_quote = false;
-        double_quote = false;
+        output[token_idx][char_idx++] = '\"';
       }
       else
       {
-        if (*(args + 1) == single_quote_ascii || *(args + 1) == double_quote_ascii)
-        {
-          ignored = true;
-          args += 2;
-          continue;
-        }
+        if (*args == single_quote_ascii)
+          single_quote = !single_quote;
         else
-        {
-          if (!double_quote && (*args == double_quote_ascii))
-            double_quote = true;
-          else
-            single_quote = true;
-        }
+          double_quote = !double_quote;
       }
     }
     else if (isspace(*args))
@@ -223,24 +211,18 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
         output[token_idx][char_idx++] = *args;
       else
       {
-        if (echo)
+        if (char_idx > 0)
         {
-          if ((char_idx > 0) && (output[token_idx][char_idx - 1] != ' '))
-            output[token_idx][char_idx++] = ' ';
-        }
-        else
-        {
-          args++;
-          continue;
+          output[token_idx][char_idx++] = *args;
+          output[token_idx][char_idx] = '\0';
+          token_idx++;
+          char_idx = 0;
         }
       }
     }
     else
     {
-      if (single_quote || double_quote)
-        output[token_idx][char_idx++] = *args;
-      else
-        output[token_idx][char_idx++] = *args;
+      output[token_idx][char_idx++] = *args;
     }
     args++;
   }
@@ -269,8 +251,6 @@ void handleEcho(char* command, char* args)
     for (size_t i = 0; i < amount_tokens; i++)
     {
       printf("%s", output[i]);
-      if (i < amount_tokens - 1)
-        printf(" ");
     }
   }
 
