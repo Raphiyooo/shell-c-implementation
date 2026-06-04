@@ -258,6 +258,7 @@ void handleEcho(char* command, char* args)
   printf("\n");
 }
 
+
 void handleCat(char* command, char* args)
 {
   char output[10][1024];
