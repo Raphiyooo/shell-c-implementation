@@ -23,7 +23,7 @@ extern char** environ;
 
 bool isSpecialChar(char c)
 {
-  const char* specialChars = "'\\\"$*? n234567891_";
+  const char* specialChars = "'\\\"$*? n_";
   if (strchr(specialChars, c) == NULL)
     return false;
   return true;
