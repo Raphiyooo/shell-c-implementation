@@ -23,7 +23,7 @@ extern char** environ;
 
 bool isSpecialChar(char c)
 {
-  const char* specialChars = "'\\\"$*? ";
+  const char* specialChars = "'\\\"$*? n";
   if (strchr(specialChars, c) == NULL)
     return false;
   return true;
@@ -31,7 +31,7 @@ bool isSpecialChar(char c)
 
 bool isSpecialCharWithinDoubleQuotes(char c)
 {
-  const char* specialChars = "\\\"$`\n";
+  const char* specialChars = "\\\"$`n";
   if (strchr(specialChars, c) == NULL)
     return false;
   return true;
