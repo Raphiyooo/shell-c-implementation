@@ -31,7 +31,7 @@ bool isSpecialChar(char c)
 
 bool isSpecialCharWithinDoubleQuotes(char c)
 {
-  const char* specialChars = "\\\"$`n_2";
+  const char* specialChars = "\\\"$`n_234567891";
   if (strchr(specialChars, c) == NULL)
     return false;
   return true;
