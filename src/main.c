@@ -178,36 +178,48 @@ void trimSpaces(char trimmed[], const char* str)
 void handleQuotes(char* command, char* args, char output[10][1024], int* amount_tokens)
 {
   int single_quote_ascii = '\'';
+  int double_quote_ascii = '\"';
   int token_idx = 0;
   int char_idx = 0;
   bool single_quote = false;
+  bool double_quote = false;
   bool ignored = false;
   bool echo = (strcmp(command, "echo") == 0) ? true : false;
   while (*args != '\0')
   {
-    if (*args == single_quote_ascii)
+    if (*args == single_quote_ascii || *args == double_quote_ascii)
     {
-      if (single_quote)
+      if (*args == single_quote_ascii && double_quote == true)
+      {
+        output[token_idx][char_idx++] = '\'';
+      }
+      else if (single_quote || double_quote)
       {
         output[token_idx++][char_idx] = '\0';
         char_idx = 0;
         single_quote = false;
+        double_quote = false;
       }
       else
       {
-        if (*(args + 1) == single_quote_ascii)
+        if (*(args + 1) == single_quote_ascii || *(args + 1) == double_quote_ascii)
         {
           ignored = true;
           args += 2;
           continue;
         }
         else
-          single_quote = true;
+        {
+          if (!double_quote)
+            double_quote = true;
+          else
+            single_quote = true;
+        }
       }
     }
     else if (isspace(*args))
     {
-      if (single_quote)
+      if (single_quote || double_quote)
         output[token_idx][char_idx++] = *args;
       else
       {
@@ -222,7 +234,7 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
     }
     else
     {
-      if (single_quote)
+      if (single_quote || double_quote)
         output[token_idx][char_idx++] = *args;
       else
         output[token_idx][char_idx++] = *args;
@@ -237,11 +249,13 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
 void handleEcho(char* command, char* args)
 {
   int single_quote_ascii = '\'';
+  int double_quote_ascii = '\"';
   char* contains_single_quote = strchr(args, single_quote_ascii);
+  char* contains_double_quote = strchr(args, double_quote_ascii);
   char output[10][1024] = {0};
   char output_trimmed[1024];
   int amount_tokens = 0;
-  if (contains_single_quote == NULL)
+  if (contains_single_quote == NULL && contains_double_quote == NULL)
   {
     trimSpaces(output_trimmed, args);
     printf("%s", output_trimmed);
