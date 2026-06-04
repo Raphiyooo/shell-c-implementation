@@ -21,6 +21,14 @@
 
 extern char** environ;
 
+bool isSpecialChar(char c)
+{
+  const char* specialChars = "'\\\"$*? ";
+  if (strchr(specialChars, c) == NULL)
+    return false;
+  return true;
+}
+
 bool isBuiltIn(char* command)
 {
   const char* built_ins[] = {
@@ -179,6 +187,7 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
 {
   int single_quote_ascii = '\'';
   int double_quote_ascii = '\"';
+  int backslash_ascii = '\\';
   int token_idx = 0;
   int char_idx = 0;
   bool single_quote = false;
@@ -221,6 +230,25 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
         }
       }
     }
+    else if (*args == backslash_ascii)
+    {
+      if (single_quote)
+      {
+        printf("ab");
+      }
+      else if (double_quote)
+      {
+        printf("ab");
+      }
+      else
+      {
+        if (isSpecialChar(*(args + 1)))
+        {
+          output[token_idx][char_idx++] = *(args + 1);
+          args++;
+        }
+      }
+    }
     else
     {
       output[token_idx][char_idx++] = *args;
@@ -236,12 +264,14 @@ void handleEcho(char* command, char* args)
 {
   int single_quote_ascii = '\'';
   int double_quote_ascii = '\"';
+  int backslash_ascii = '\\';
   char* contains_single_quote = strchr(args, single_quote_ascii);
   char* contains_double_quote = strchr(args, double_quote_ascii);
+  char* contains_backslash = strchr(args, backslash_ascii);
   char output[10][1024] = {0};
   char output_trimmed[1024];
   int amount_tokens = 0;
-  if (contains_single_quote == NULL && contains_double_quote == NULL)
+  if (contains_single_quote == NULL && contains_double_quote == NULL && contains_backslash == NULL)
   {
     trimSpaces(output_trimmed, args);
     printf("%s", output_trimmed);
