@@ -29,6 +29,14 @@ bool isSpecialChar(char c)
   return true;
 }
 
+bool isSpecialCharWithinDoubleQuotes(char c)
+{
+  const char* specialChars = "\\\"$`\n";
+  if (strchr(specialChars, c) == NULL)
+    return false;
+  return true;
+}
+
 bool isBuiltIn(char* command)
 {
   const char* built_ins[] = {
@@ -233,12 +241,16 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
     else if (*args == backslash_ascii)
     {
       if (single_quote)
-      {
         output[token_idx][char_idx++] = *args;
-      }
       else if (double_quote)
       {
-        printf("ab");
+        if (isSpecialCharWithinDoubleQuotes(*(args + 1)))
+        {
+          output[token_idx][char_idx++] = *(args + 1);
+          args++;
+        }
+        else
+          output[token_idx][char_idx++] = *args;
       }
       else
       {
@@ -247,6 +259,8 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
           output[token_idx][char_idx++] = *(args + 1);
           args++;
         }
+        else
+          output[token_idx][char_idx++] = *args;
       }
     }
     else
