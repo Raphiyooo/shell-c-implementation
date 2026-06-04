@@ -210,7 +210,7 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
         }
         else
         {
-          if (!double_quote)
+          if (!double_quote && (*args == double_quote_ascii))
             double_quote = true;
           else
             single_quote = true;
@@ -224,7 +224,10 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
       else
       {
         if (echo)
-          output[token_idx][char_idx++] = *args;
+        {
+          if ((char_idx > 0) && (output[token_idx][char_idx - 1] != ' '))
+            output[token_idx][char_idx++] = ' ';
+        }
         else
         {
           args++;
@@ -266,6 +269,8 @@ void handleEcho(char* command, char* args)
     for (size_t i = 0; i < amount_tokens; i++)
     {
       printf("%s", output[i]);
+      if (i < amount_tokens - 1)
+        printf(" ");
     }
   }
 
