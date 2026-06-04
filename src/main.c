@@ -181,26 +181,58 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
   int token_idx = 0;
   int char_idx = 0;
   bool single_quote = false;
+  bool ignored = false;
   while (*args != '\0')
   {
     if (*args == single_quote_ascii)
     {
-      single_quote = !single_quote;
-    } 
+      if (single_quote)
+      {
+        output[token_idx++][char_idx] = '\0';
+        char_idx = 0;
+        single_quote = false;
+      }
+      else
+      {
+        if (*(args + 1) == single_quote_ascii)
+        {
+          ignored = true;
+          args += 2;
+          continue;
+        }
+        else
+          single_quote = true;
+      }
+    }
     else if (isspace(*args))
     {
-      if (single_quote == true)
+      if (single_quote)
         output[token_idx][char_idx++] = *args;
       else
       {
-
+        output[token_idx++][char_idx] = '\0';
+        char_idx = 0;
+        single_quote = false;
+        output[token_idx][char_idx++] = *args;
+        args++;
+        while (isspace(*args))
+        {
+          output[token_idx][char_idx++] = *args;
+          args++;
+        }
       }
     }
     else
-      output[token_idx][char_idx++] = *args;
+    {
+      if (single_quote)
+        output[token_idx][char_idx++] = *args;
+      else
+        output[token_idx][char_idx++] = *args;
+    }
     args++;
   }
-
+  if (ignored)
+    output[token_idx++][char_idx] = '\0';
   *amount_tokens = token_idx;
 }
 
@@ -208,7 +240,7 @@ void handleEcho(char* args)
 {
   int single_quote_ascii = '\'';
   char* contains_single_quote = strchr(args, single_quote_ascii);
-  char output[10][1024];
+  char output[10][1024] = {0};
   char output_trimmed[1024];
   int amount_tokens = 0;
   if (contains_single_quote == NULL)
