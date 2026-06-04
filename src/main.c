@@ -229,7 +229,7 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
     }
     args++;
   }
-  
+
   output[token_idx++][char_idx] = '\0';
   *amount_tokens = token_idx;
 }
@@ -263,7 +263,7 @@ void handleCat(char* command, char* args)
   char output[10][1024];
   int amount_tokens = 0;
   handleQuotes(command, args, output, &amount_tokens);
-  for (size_t i = 0; i < amount_tokens; i++)
+  for (size_t i = 0; i < amount_tokens - 1; i++)
   {
     FILE* file_ptr = fopen(output[i], "r");
     if (file_ptr == NULL)
