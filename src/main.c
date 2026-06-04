@@ -175,13 +175,14 @@ void trimSpaces(char trimmed[], const char* str)
   trimmed[idx] = '\0';
 }
 
-void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
+void handleQuotes(char* command, char* args, char output[10][1024], int* amount_tokens)
 {
   int single_quote_ascii = '\'';
   int token_idx = 0;
   int char_idx = 0;
   bool single_quote = false;
   bool ignored = false;
+  bool echo = (strcmp(command, "echo") == 0) ? true : false;
   while (*args != '\0')
   {
     if (*args == single_quote_ascii)
@@ -210,15 +211,12 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
         output[token_idx][char_idx++] = *args;
       else
       {
-        output[token_idx++][char_idx] = '\0';
-        char_idx = 0;
-        single_quote = false;
-        output[token_idx][char_idx++] = *args;
-        args++;
-        while (isspace(*args))
-        {
+        if (echo)
           output[token_idx][char_idx++] = *args;
+        else
+        {
           args++;
+          continue;
         }
       }
     }
@@ -231,12 +229,12 @@ void handleQuotes(char* args, char output[10][1024], int* amount_tokens)
     }
     args++;
   }
-  if (ignored)
-    output[token_idx++][char_idx] = '\0';
+  
+  output[token_idx++][char_idx] = '\0';
   *amount_tokens = token_idx;
 }
 
-void handleEcho(char* args)
+void handleEcho(char* command, char* args)
 {
   int single_quote_ascii = '\'';
   char* contains_single_quote = strchr(args, single_quote_ascii);
@@ -250,7 +248,7 @@ void handleEcho(char* args)
   }
   else
   {
-    handleQuotes(args, output, &amount_tokens);
+    handleQuotes(command, args, output, &amount_tokens);
     for (size_t i = 0; i < amount_tokens; i++)
     {
       printf("%s", output[i]);
@@ -260,11 +258,11 @@ void handleEcho(char* args)
   printf("\n");
 }
 
-void handleCat(char* args)
+void handleCat(char* command, char* args)
 {
   char output[10][1024];
   int amount_tokens = 0;
-  handleQuotes(args, output, &amount_tokens);
+  handleQuotes(command, args, output, &amount_tokens);
   for (size_t i = 0; i < amount_tokens; i++)
   {
     FILE* file_ptr = fopen(output[i], "r");
@@ -313,7 +311,7 @@ int main(int argc, char* argv[])
     if (strcmp(command, "exit") == 0)
       break;
     else if (strcmp(command, "echo") == 0)
-      handleEcho(args);
+      handleEcho(command, args);
     else if (strcmp(command, "type") == 0)
       handleType(args);
     else if (strcmp(command, "pwd") == 0)
@@ -321,7 +319,7 @@ int main(int argc, char* argv[])
     else if (strcmp(command, "cd") == 0)
       handleCd(args);
     else if (strcmp(command, "cat") == 0)
-      handleCat(args);
+      handleCat(command, args);
     else
     {
       char* full_path = NULL;
