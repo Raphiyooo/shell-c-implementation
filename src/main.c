@@ -213,7 +213,8 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
       {
         if (char_idx > 0)
         {
-          output[token_idx][char_idx++] = *args;
+          if (echo)
+            output[token_idx][char_idx++] = *args;
           output[token_idx][char_idx] = '\0';
           token_idx++;
           char_idx = 0;
