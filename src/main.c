@@ -170,18 +170,12 @@ void handlePwd()
 void handleCd(char output[][1024], int amount_tokens)
 {
   char* home_path = NULL;
-  if (amount_tokens > 0)
-  {
-    if (strcmp(output[1], "~") == 0 || amount_tokens == 1)
-      home_path = getenv(HOMEPATH);
-    else
-      home_path = output[1];
-    if (chdir(home_path) != 0)
-      printf("cd: %s: No such file or directory\n", home_path);
-  }
+  if (amount_tokens == 1 || strcmp(output[1], "~") == 0)
+    home_path = getenv(HOMEPATH);
   else
-    perror("cd failed");
-
+    home_path = output[1];
+  if (chdir(home_path) != 0)
+    printf("cd: %s: No such file or directory\n", home_path);
 }
 
 void trimSpaces(char trimmed[], const char* str)
@@ -291,7 +285,6 @@ void handleEcho(char output[][1024], int amount_tokens)
 
   printf("\n");
 }
-
 
 void handleCat(char output[][1024], int amount_tokens)
 {
