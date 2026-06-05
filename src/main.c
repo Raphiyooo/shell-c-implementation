@@ -170,9 +170,9 @@ void handlePwd()
 void handleCd(char output[][1024], int amount_tokens)
 {
   char* home_path = NULL;
-  if (amount_tokens < 2)
+  if (amount_tokens > 0)
   {
-    if (strcmp(output[1], "~") == 0)
+    if (strcmp(output[1], "~") == 0 || amount_tokens == 1)
       home_path = getenv(HOMEPATH);
     else
       home_path = output[1];
