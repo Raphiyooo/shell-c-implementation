@@ -43,7 +43,8 @@ bool isBuiltIn(char* command)
     "echo",
     "exit",
     "type",
-    "pwd"
+    "pwd",
+    "cd"
   };
   size_t num_built_ins = sizeof(built_ins) / sizeof(built_ins[0]);
   for (size_t i = 0; i < num_built_ins; i++)
@@ -100,20 +101,28 @@ bool locateExecutableFiles(char* args, char** full_path)
   return false;
 }
 
-void handleType(char* args)
+void handleType(char output[][1024], int amount_tokens)
 {
-  char* full_path = NULL;
-  bool builtIn = isBuiltIn(args);
-  bool got_executable = locateExecutableFiles(args, &full_path);
-  if (builtIn)
-    printf("%s is a shell builtin\n", args);
-  else if (got_executable)
-    printf("%s is %s\n", args, full_path);
-  else
-    printf("%s: not found\n", args);
+  if (amount_tokens < 2)
+    return;
+  for (size_t i = 1; i < amount_tokens; i++)
+  {
+    char* full_path = NULL;
+    bool builtIn = isBuiltIn(output[i]);
+    if (builtIn)
+    {
+      printf("%s is a shell builtin\n", output[i]);
+      return;
+    }
+    bool got_executable = locateExecutableFiles(output[i], &full_path);
+    if (got_executable)
+      printf("%s is %s\n", output[i], full_path);
+    else
+      printf("%s: not found\n", output[i]);
 
-  if (full_path != NULL)
-    free(full_path);
+    if (full_path != NULL)
+      free(full_path);
+  }
 }
 
 void executeProgram(char* full_path, char* tokenized_args_array[])
@@ -137,22 +146,16 @@ void executeProgram(char* full_path, char* tokenized_args_array[])
   }
 }
 
-void buildArgsArrayCallExecute(char* first_word, char* args, char* full_path)
+void buildArgsArrayCallExecute(char output[][1024], char* full_path, int amount_tokens)
 {
-  size_t counter = 0;
-  char* tokenized_args_array[64] = {NULL};
-  tokenized_args_array[counter++] = first_word;
-
-  char* save_args = NULL;
-  char* token = strtok_r(args, " ", &save_args);
-  while (token != NULL)
+  char* arguments[10];
+  for (size_t i = 0; i < amount_tokens; i++)
   {
-    tokenized_args_array[counter++] = token;
-    token = strtok_r(NULL, " ", &save_args);
+    arguments[i] = output[i];
   }
-  tokenized_args_array[counter] = NULL;
+  arguments[amount_tokens] = NULL;
   
-  executeProgram(full_path, tokenized_args_array);
+  executeProgram(full_path, arguments);
 }
 
 void handlePwd()
@@ -164,15 +167,21 @@ void handlePwd()
     printf("%s\n", full_path_cur_dir);
 }
 
-void handleCd(char* args)
+void handleCd(char output[][1024], int amount_tokens)
 {
   char* home_path = NULL;
-  if (strcmp(args, "~") == 0)
-    home_path = getenv(HOMEPATH);
+  if (amount_tokens < 2)
+  {
+    if (strcmp(output[1], "~") == 0)
+      home_path = getenv(HOMEPATH);
+    else
+      home_path = output[1];
+    if (chdir(home_path) != 0)
+      printf("cd: %s: No such file or directory\n", home_path);
+  }
   else
-    home_path = args;
-  if (chdir(home_path) != 0)
-    printf("cd: %s: No such file or directory\n", home_path);
+    perror("cd failed");
+
 }
 
 void trimSpaces(char trimmed[], const char* str)
@@ -191,7 +200,7 @@ void trimSpaces(char trimmed[], const char* str)
   trimmed[idx] = '\0';
 }
 
-void handleQuotes(char* command, char* args, char output[10][1024], int* amount_tokens)
+void handleQuotes(char* args, char output[][1024], int* amount_tokens)
 {
   int single_quote_ascii = '\'';
   int double_quote_ascii = '\"';
@@ -201,7 +210,6 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
   bool single_quote = false;
   bool double_quote = false;
   bool ignored = false;
-  bool echo = (strcmp(command, "echo") == 0) ? true : false;
   while (*args != '\0')
   {
     if (*args == single_quote_ascii || *args == double_quote_ascii)
@@ -230,8 +238,6 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
       {
         if (char_idx > 0)
         {
-          if (echo)
-            output[token_idx][char_idx++] = *args;
           output[token_idx][char_idx] = '\0';
           token_idx++;
           char_idx = 0;
@@ -274,41 +280,22 @@ void handleQuotes(char* command, char* args, char output[10][1024], int* amount_
   *amount_tokens = token_idx;
 }
 
-void handleEcho(char* command, char* args)
+void handleEcho(char output[][1024], int amount_tokens)
 {
-  int single_quote_ascii = '\'';
-  int double_quote_ascii = '\"';
-  int backslash_ascii = '\\';
-  char* contains_single_quote = strchr(args, single_quote_ascii);
-  char* contains_double_quote = strchr(args, double_quote_ascii);
-  char* contains_backslash = strchr(args, backslash_ascii);
-  char output[10][1024] = {0};
-  char output_trimmed[1024];
-  int amount_tokens = 0;
-  if (contains_single_quote == NULL && contains_double_quote == NULL && contains_backslash == NULL)
+  for (size_t i = 1; i < amount_tokens; i++)
   {
-    trimSpaces(output_trimmed, args);
-    printf("%s", output_trimmed);
-  }
-  else
-  {
-    handleQuotes(command, args, output, &amount_tokens);
-    for (size_t i = 0; i < amount_tokens; i++)
-    {
-      printf("%s", output[i]);
-    }
+    printf("%s", output[i]);
+    if (i < amount_tokens - 1)
+      printf(" ");
   }
 
   printf("\n");
 }
 
 
-void handleCat(char* command, char* args)
+void handleCat(char output[][1024], int amount_tokens)
 {
-  char output[10][1024];
-  int amount_tokens = 0;
-  handleQuotes(command, args, output, &amount_tokens);
-  for (size_t i = 0; i < amount_tokens; i++)
+  for (size_t i = 1; i < amount_tokens; i++)
   {
     FILE* file_ptr = fopen(output[i], "r");
     if (file_ptr == NULL)
@@ -343,34 +330,29 @@ int main(int argc, char* argv[])
 
     char* line_copy = strdup(line);
 
-    char* save_input = NULL;
-    char* command = strtok_r(line_copy, " ", &save_input);
-    if (command == NULL)
-    {
-      free(line_copy);
-      continue;
-    }
-    // points to the first non input word in the line
-    char* args = save_input;
+    char output[10][1024];
+    int amount_tokens = 0;
+    handleQuotes(line, output, &amount_tokens);
+    char* command = output[0];
 
     if (strcmp(command, "exit") == 0)
       break;
     else if (strcmp(command, "echo") == 0)
-      handleEcho(command, args);
+      handleEcho(output, amount_tokens);
     else if (strcmp(command, "type") == 0)
-      handleType(args);
+      handleType(output, amount_tokens);
     else if (strcmp(command, "pwd") == 0)
       handlePwd();
     else if (strcmp(command, "cd") == 0)
-      handleCd(args);
+      handleCd(output, amount_tokens);
     else if (strcmp(command, "cat") == 0)
-      handleCat(command, args);
+      handleCat(output, amount_tokens);
     else
     {
       char* full_path = NULL;
       bool is_executable = locateExecutableFiles(command, &full_path);
       if (is_executable)
-        buildArgsArrayCallExecute(command, args, full_path);
+        buildArgsArrayCallExecute(output, full_path, amount_tokens);
       else
         printf("%s: command not found\n", command);
     }
