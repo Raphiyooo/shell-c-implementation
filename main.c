@@ -45,7 +45,8 @@ bool isBuiltIn(char *command)
       "exit",
       "type",
       "pwd",
-      "cd"};
+      "cd",
+      "history"};
   size_t num_built_ins = sizeof(built_ins) / sizeof(built_ins[0]);
   for (size_t i = 0; i < num_built_ins; i++)
   {
@@ -57,10 +58,11 @@ bool isBuiltIn(char *command)
 
 void addCommand(char **full_path, char *path, char *command)
 {
-  *full_path = (char *)malloc(strlen(path) + 1 + strlen(command) + 1);
+  *full_path = (char *)malloc(strlen(path) + 1 + strlen(command) + 1); // +1 for / and +1 for \0
+  size_t len = strlen(path) + 1 + strlen(command) + 1;
   if (!(*full_path))
     return;
-  sprintf(*full_path, "%s/%s", path, command);
+  snprintf(*full_path, len, "%s/%s", path, command);
 }
 
 bool locateExecutableFiles(char *args, char **full_path)
@@ -101,7 +103,7 @@ bool locateExecutableFiles(char *args, char **full_path)
   return false;
 }
 
-void handleType(char output[][1024], int amount_tokens)
+void handleType(char output[][1024], size_t amount_tokens)
 {
   if (amount_tokens < 2)
     return;
@@ -144,7 +146,7 @@ void executeProgram(char *full_path, char *tokenized_args_array[])
   }
 }
 
-void buildArgsArrayCallExecute(char output[][1024], char *full_path, int amount_tokens)
+void buildArgsArrayCallExecute(char output[][1024], char *full_path, size_t amount_tokens)
 {
   char *arguments[10];
   for (size_t i = 0; i < amount_tokens; i++)
@@ -156,7 +158,7 @@ void buildArgsArrayCallExecute(char output[][1024], char *full_path, int amount_
   executeProgram(full_path, arguments);
 }
 
-void handlePwd()
+void handlePwd(void)
 {
   char full_path_cur_dir[1024] = "";
   if (getcwd(full_path_cur_dir, sizeof(full_path_cur_dir)) == NULL)
@@ -165,7 +167,7 @@ void handlePwd()
     printf("%s\n", full_path_cur_dir);
 }
 
-void handleCd(char output[][1024], int amount_tokens)
+void handleCd(char output[][1024], size_t amount_tokens)
 {
   char *home_path = NULL;
   if (amount_tokens > 0)
@@ -185,7 +187,7 @@ void trimSpaces(char trimmed[], const char *str)
 {
   if (str == NULL)
     return;
-  int idx = 0;
+  size_t idx = 0;
   while (*str != '\0')
   {
     if (!(*str == ' '))
@@ -197,7 +199,7 @@ void trimSpaces(char trimmed[], const char *str)
   trimmed[idx] = '\0';
 }
 
-void handleQuotes(char *args, char output[][1024], int *amount_tokens)
+void handleQuotes(char *args, char output[][1024], size_t* amount_tokens)
 {
   int single_quote_ascii = '\'';
   int double_quote_ascii = '\"';
@@ -206,7 +208,7 @@ void handleQuotes(char *args, char output[][1024], int *amount_tokens)
   int char_idx = 0;
   bool single_quote = false;
   bool double_quote = false;
-  bool ignored = false;
+  
   while (*args != '\0')
   {
     if (*args == single_quote_ascii || *args == double_quote_ascii)
@@ -277,7 +279,7 @@ void handleQuotes(char *args, char output[][1024], int *amount_tokens)
   *amount_tokens = token_idx;
 }
 
-void handleEcho(char output[][1024], int amount_tokens)
+void handleEcho(char output[][1024], size_t amount_tokens)
 {
   for (size_t i = 1; i < amount_tokens; i++)
   {
@@ -289,7 +291,7 @@ void handleEcho(char output[][1024], int amount_tokens)
   printf("\n");
 }
 
-void handleCat(char output[][1024], int amount_tokens)
+void handleCat(char output[][1024], size_t amount_tokens)
 {
   for (size_t i = 1; i < amount_tokens; i++)
   {
@@ -310,10 +312,10 @@ void handleCat(char output[][1024], int amount_tokens)
   }
 }
 
-int redirect_output(char output[][1024], int *amount_tokens, int *target_fd, bool *redirected, int *saved_fd)
+int redirect_output(char output[][1024], size_t* amount_tokens, int *target_fd, bool *redirected, int *saved_fd)
 {
   bool append = false;
-  for (int i = 1; i < (*amount_tokens) - 1; i++) // redirection operator cant be on first nor on last index
+  for (size_t i = 1; i < (*amount_tokens) - 1; i++) // redirection operator cant be on first nor on last index
   {
     if (strcmp(output[i], ">") == 0 || strcmp(output[i], "1>") == 0 || strcmp(output[i], ">>") == 0|| strcmp(output[i], "1>>") == 0)
       *target_fd = STDOUT_FILENO;
@@ -360,8 +362,23 @@ int redirect_output(char output[][1024], int *amount_tokens, int *target_fd, boo
   return 0;
 }
 
+void handleHistory(char input_history[][1024], size_t counting_input)
+{
+  for (size_t i = 1; i < counting_input; i++)
+  {
+    printf("%zu  %s\n", i, input_history[i]);
+  }
+}
+
+void addToHistory(char input_history[][1024], char* input, size_t* counting_input)
+{
+  strcpy(input_history[(*counting_input)++], input);
+}
+
 int main(int argc, char *argv[])
 {
+  char input_history[10][1024];
+  size_t counting_input = 0;
   while (1)
   {
     setbuf(stdout, NULL);
@@ -375,9 +392,10 @@ int main(int argc, char *argv[])
       line[strlen(line) - 1] = '\0';
 
     char *line_copy = strdup(line);
+    addToHistory(input_history, line_copy, &counting_input);
 
     char output[10][1024];
-    int amount_tokens = 0;
+    size_t amount_tokens = 0;
     handleQuotes(line, output, &amount_tokens);
     char *command = output[0];
     int saved_fd = -1;
@@ -399,6 +417,8 @@ int main(int argc, char *argv[])
       handleCd(output, amount_tokens);
     else if (strcmp(command, "cat") == 0)
       handleCat(output, amount_tokens);
+    else if (strcmp(command, "history") == 0)
+      handleHistory(input_history, counting_input);
     else
     {
       char *full_path = NULL;
