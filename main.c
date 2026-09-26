@@ -199,7 +199,7 @@ void trimSpaces(char trimmed[], const char *str)
   trimmed[idx] = '\0';
 }
 
-void handleQuotes(char *args, char output[][1024], size_t* amount_tokens)
+void handleQuotes(char *args, char output[][1024], size_t *amount_tokens)
 {
   int single_quote_ascii = '\'';
   int double_quote_ascii = '\"';
@@ -208,7 +208,7 @@ void handleQuotes(char *args, char output[][1024], size_t* amount_tokens)
   int char_idx = 0;
   bool single_quote = false;
   bool double_quote = false;
-  
+
   while (*args != '\0')
   {
     if (*args == single_quote_ascii || *args == double_quote_ascii)
@@ -312,12 +312,12 @@ void handleCat(char output[][1024], size_t amount_tokens)
   }
 }
 
-int redirect_output(char output[][1024], size_t* amount_tokens, int *target_fd, bool *redirected, int *saved_fd)
+int redirect_output(char output[][1024], size_t *amount_tokens, int *target_fd, bool *redirected, int *saved_fd)
 {
   bool append = false;
   for (size_t i = 1; i < (*amount_tokens) - 1; i++) // redirection operator cant be on first nor on last index
   {
-    if (strcmp(output[i], ">") == 0 || strcmp(output[i], "1>") == 0 || strcmp(output[i], ">>") == 0|| strcmp(output[i], "1>>") == 0)
+    if (strcmp(output[i], ">") == 0 || strcmp(output[i], "1>") == 0 || strcmp(output[i], ">>") == 0 || strcmp(output[i], "1>>") == 0)
       *target_fd = STDOUT_FILENO;
     else if (strcmp(output[i], "2>") == 0 || strcmp(output[i], "2>>") == 0)
       *target_fd = STDERR_FILENO;
@@ -362,15 +362,30 @@ int redirect_output(char output[][1024], size_t* amount_tokens, int *target_fd, 
   return 0;
 }
 
-void handleHistory(char input_history[][1024], size_t counting_input)
+void handleHistory(char output[][1024], char input_history[][1024], size_t counting_input)
 {
-  for (size_t i = 1; i < counting_input; i++)
+  char *endptr;
+  long convert_commands_show = strtol(output[1], &endptr, 10);
+  size_t amount_commands_shown = 0;
+  if (endptr == output[1])
+    amount_commands_shown = 0;
+  else if (*endptr != '\0')
+  {
+    fprintf(stderr, "No valid number\n");
+    return;
+  }
+  else
+  {
+    amount_commands_shown = (size_t)convert_commands_show;
+    amount_commands_shown--;
+  }
+  for (size_t i = amount_commands_shown; i < counting_input; i++)
   {
     printf("%zu  %s\n", i, input_history[i]);
   }
 }
 
-void addToHistory(char input_history[][1024], char* input, size_t* counting_input)
+void addToHistory(char input_history[][1024], char *input, size_t *counting_input)
 {
   strcpy(input_history[(*counting_input)++], input);
 }
@@ -418,7 +433,7 @@ int main(int argc, char *argv[])
     else if (strcmp(command, "cat") == 0)
       handleCat(output, amount_tokens);
     else if (strcmp(command, "history") == 0)
-      handleHistory(input_history, counting_input);
+      handleHistory(output, input_history, counting_input);
     else
     {
       char *full_path = NULL;
