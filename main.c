@@ -310,31 +310,52 @@ void handleCat(char output[][1024], int amount_tokens)
   }
 }
 
-int redirect_output(char output[][1024], int* amount_tokens)
+int redirect_output(char output[][1024], int *amount_tokens, int *target_fd, bool *redirected, int *saved_fd)
 {
+  bool append = false;
   for (int i = 1; i < (*amount_tokens) - 1; i++) // redirection operator cant be on first nor on last index
   {
-    if (strcmp(output[i], ">") == 0 || strcmp(output[i], "1>") == 0)
+    if (strcmp(output[i], ">") == 0 || strcmp(output[i], "1>") == 0 || strcmp(output[i], ">>") == 0|| strcmp(output[i], "1>>") == 0)
+      *target_fd = STDOUT_FILENO;
+    else if (strcmp(output[i], "2>") == 0 || strcmp(output[i], "2>>") == 0)
+      *target_fd = STDERR_FILENO;
+    else
+      continue;
+    // append
+    if (strcmp(output[i], ">>") == 0 || strcmp(output[i], "1>>") == 0 || strcmp(output[i], "2>>") == 0)
+      append = true;
+
+    *saved_fd = dup(*target_fd);
+    if (*saved_fd == -1)
     {
-      char* filename = output[i + 1];
-      // redirect stdout
-      int fd = open(output[i + 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-      if (fd == -1)
-      {
-        perror("Could not open the file");
-        return 2;
-      }
-      if (dup2(fd, STDOUT_FILENO) == -1)
-      {
-        perror("Error occurred while setting the file descriptors");
-        close(fd);
-        return 1;
-      }
-      close(fd);
-      *amount_tokens = i;
-      output[i][0] = '\0';
-      break;
+      perror("Dup failed");
+      return 3;
     }
+    int flags = O_WRONLY | O_CREAT;
+    if (append)
+      flags |= O_APPEND;
+    else
+      flags |= O_TRUNC;
+
+    int fd = open(output[i + 1], flags, 0644);
+    if (fd == -1)
+    {
+      perror("No such file or directory");
+      close(*saved_fd);
+      return 2;
+    }
+    if (dup2(fd, *target_fd) == -1)
+    {
+      perror("Error occurred while setting the file descriptors");
+      close(fd);
+      close(*saved_fd);
+      return 1;
+    }
+    close(fd);
+    *amount_tokens = i;
+    output[i][0] = '\0';
+    *redirected = true;
+    break;
   }
   return 0;
 }
@@ -359,8 +380,10 @@ int main(int argc, char *argv[])
     int amount_tokens = 0;
     handleQuotes(line, output, &amount_tokens);
     char *command = output[0];
-    int saved_fd = dup(STDOUT_FILENO);
-    int return_value = redirect_output(output, &amount_tokens);
+    int saved_fd = -1;
+    int target_fd = -1;
+    bool redirected = false;
+    int return_value = redirect_output(output, &amount_tokens, &target_fd, &redirected, &saved_fd);
     if (return_value != 0)
       return 1;
 
@@ -383,10 +406,15 @@ int main(int argc, char *argv[])
       if (is_executable)
         buildArgsArrayCallExecute(output, full_path, amount_tokens);
       else
-        printf("%s: command not found\n", command);
+        fprintf(stderr, "%s: command not found\n", command);
     }
-    dup2(saved_fd, STDOUT_FILENO);
-    close(saved_fd);
+    if (redirected)
+    {
+      fflush(stdout);
+      fflush(stderr);
+      dup2(saved_fd, target_fd);
+      close(saved_fd);
+    }
 
     free(line_copy);
     free(line);
