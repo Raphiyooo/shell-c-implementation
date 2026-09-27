@@ -428,14 +428,26 @@ void addToHistory(char *input)
   add_history(input);
 }
 
+void printTerminalState(const char *where)
+{
+    struct termios current;
+    tcgetattr(STDIN_FILENO, &current);
+
+    printf("%s: ECHO=%s ICANON=%s\n",
+           where,
+           (current.c_lflag & ECHO) ? "ON" : "OFF",
+           (current.c_lflag & ICANON) ? "ON" : "OFF");
+}
+
 int main(int argc, char *argv[])
 {
+  using_history();
   // set terminal into raw/non canonical mode
   struct termios old_attr;
   tcgetattr(STDIN_FILENO, &old_attr);
   struct termios new_attr = old_attr;
   new_attr.c_lflag &= ~ICANON; // disable canonical mode so i can process byte by byte
-  // new_attr.c_lflag &= ~ECHO;
+  new_attr.c_lflag &= ~ECHO;
   tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
   while (1)
   {
@@ -446,7 +458,10 @@ int main(int argc, char *argv[])
     size_t capacity = 100;
     char* line = malloc(sizeof(char) * capacity);
     if (line == NULL)
+    {
+      tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       return 1;
+    }
     size_t length = 0;
     while (length < capacity - 1)
     {
@@ -454,18 +469,35 @@ int main(int argc, char *argv[])
       if (ret_val == -1)
       {
         fprintf(stderr, "Reading failed\n");
+        tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
         return 1;
       }
       else if (c == CTRLD_ASCII) // eof
+      {
         return 2;
+        tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
+      }
       else if (c == '\n' || c == '\r')
+      {
         break;
+      }
+      else if (c == 127)
+      {
+        if (length > 0)
+        {
+          line[--length] = '\0';
+          write(STDOUT_FILENO, "\b \b", sizeof(char) * 3); // \b move cursor one position left, print a space over old char, ove cursor one position left again
+        }
+      }
       else
+      {
         line[length++] = c;
+        fprintf(stderr, "[writing %d '%c']\n", (unsigned char)c, c);
+        write(STDOUT_FILENO, &c, sizeof(char));
+      }
     }
-    // backwards implementation
     line[length] = '\0';
-
+    printf("\n");
     char *line_copy = strdup(line);
     // addToHistory(input_history, line_copy, &counting_input);
     add_history(line_copy);
