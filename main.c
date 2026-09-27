@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <termios.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <readline/readline.h>
@@ -21,6 +22,8 @@
 #else
 #define HOMEPATH "HOME"
 #endif
+
+#define CTRLD_ASCII 4
 
 extern char **environ;
 
@@ -427,17 +430,41 @@ void addToHistory(char *input)
 
 int main(int argc, char *argv[])
 {
+  // set terminal into raw/non canonical mode
+  struct termios old_attr;
+  tcgetattr(STDIN_FILENO, &old_attr);
+  struct termios new_attr = old_attr;
+  new_attr.c_lflag &= ~ICANON; // disable canonical mode so i can process byte by byte
+  // new_attr.c_lflag &= ~ECHO;
+  tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
   while (1)
   {
     setbuf(stdout, NULL);
 
     printf("$ ");
-    char *line = NULL;
-    size_t cap = 0;
-    if (getline(&line, &cap, stdin) == -1)
-      break;
-    if (line[strlen(line) - 1] == '\n')
-      line[strlen(line) - 1] = '\0';
+    char c = '0';
+    size_t capacity = 100;
+    char* line = malloc(sizeof(char) * capacity);
+    if (line == NULL)
+      return 1;
+    size_t length = 0;
+    while (length < capacity - 1)
+    {
+      ssize_t ret_val = read(STDIN_FILENO, &c, sizeof(char));
+      if (ret_val == -1)
+      {
+        fprintf(stderr, "Reading failed\n");
+        return 1;
+      }
+      else if (c == CTRLD_ASCII) // eof
+        return 2;
+      else if (c == '\n' || c == '\r')
+        break;
+      else
+        line[length++] = c;
+    }
+    // backwards implementation
+    line[length] = '\0';
 
     char *line_copy = strdup(line);
     // addToHistory(input_history, line_copy, &counting_input);
@@ -493,5 +520,6 @@ int main(int argc, char *argv[])
 
     line = NULL;
   }
+  tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
   return 0;
 }
