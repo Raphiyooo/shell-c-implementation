@@ -7,6 +7,8 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #ifdef _WIN32
 #define PATHSEP ";"
@@ -362,38 +364,69 @@ int redirect_output(char output[][1024], size_t *amount_tokens, int *target_fd, 
   return 0;
 }
 
-void handleHistory(char output[][1024], char input_history[][1024], size_t counting_input)
+void handleHistory(char output[][1024], size_t amount_tokens)
 {
-  char *endptr;
-  long convert_commands_show = strtol(output[1], &endptr, 10);
-  size_t amount_commands_shown = 0;
-  if (endptr == output[1])
-    amount_commands_shown = 0;
-  else if (*endptr != '\0')
-  {
-    fprintf(stderr, "No valid number\n");
+  // implementation by myself
+  // char *endptr;
+  // long convert_commands_show = strtol(output[1], &endptr, 10);
+  // size_t amount_commands_shown = 0;
+  // if (endptr == output[1]) // just history no int input
+  //   amount_commands_shown = 0;
+  // else if (*endptr != '\0')
+  // {
+  //   fprintf(stderr, "No valid number\n");
+  //   return;
+  // }
+  // else
+  // {
+  //   amount_commands_shown = (size_t)convert_commands_show;
+  //   amount_commands_shown--;
+  // }
+  // for (size_t i = amount_commands_shown; i < counting_input; i++)
+  // {
+  //   printf("%zu  %s\n", i, input_history[i]);
+  // }
+  // implementation with readline library
+  if (history_length == 0)
     return;
+  size_t start_index = history_base; // history get has 1 based indices
+  size_t end_index = history_base + history_length - 1;
+  if (amount_tokens == 1) // user just typed history
+    start_index = 1;
+  else if (amount_tokens == 2)
+  {
+    char* endptr = NULL;
+    long convert_commands_show = strtol(output[1], &endptr, 10);
+    if (*endptr != '\0')
+    {
+      fprintf(stderr, "Invalid number\n");
+      return;
+    }
+    if ((size_t) convert_commands_show < (size_t) history_length)
+      start_index = (size_t) history_length - (size_t) convert_commands_show + 1;
   }
   else
   {
-    amount_commands_shown = (size_t)convert_commands_show;
-    amount_commands_shown--;
+    fprintf(stderr, "Invalid amount of tokens\n");
+    return;
   }
-  for (size_t i = amount_commands_shown; i < counting_input; i++)
+  for (size_t i = start_index; i < end_index + 1; i++)
   {
-    printf("%zu  %s\n", i, input_history[i]);
+    HIST_ENTRY* entry = history_get(i);
+    if (entry != NULL && entry->line != NULL)
+      printf("%zu  %s\n", i, entry->line);
   }
+  
 }
 
-void addToHistory(char input_history[][1024], char *input, size_t *counting_input)
+void addToHistory(char *input)
 {
-  strcpy(input_history[(*counting_input)++], input);
+  // strcpy(input_history[(*counting_input)++], input);
+  add_history(input);
 }
 
 int main(int argc, char *argv[])
 {
-  char input_history[10][1024];
-  size_t counting_input = 0;
   while (1)
   {
     setbuf(stdout, NULL);
@@ -407,11 +440,13 @@ int main(int argc, char *argv[])
       line[strlen(line) - 1] = '\0';
 
     char *line_copy = strdup(line);
-    addToHistory(input_history, line_copy, &counting_input);
+    // addToHistory(input_history, line_copy, &counting_input);
+    add_history(line_copy);
 
     char output[10][1024];
     size_t amount_tokens = 0;
     handleQuotes(line, output, &amount_tokens);
+    output[amount_tokens][0] = '\0';
     char *command = output[0];
     int saved_fd = -1;
     int target_fd = -1;
@@ -433,7 +468,9 @@ int main(int argc, char *argv[])
     else if (strcmp(command, "cat") == 0)
       handleCat(output, amount_tokens);
     else if (strcmp(command, "history") == 0)
-      handleHistory(output, input_history, counting_input);
+    {
+      handleHistory(output, amount_tokens);
+    }
     else
     {
       char *full_path = NULL;
