@@ -428,17 +428,6 @@ void addToHistory(char *input)
   add_history(input);
 }
 
-void printTerminalState(const char *where)
-{
-    struct termios current;
-    tcgetattr(STDIN_FILENO, &current);
-
-    printf("%s: ECHO=%s ICANON=%s\n",
-           where,
-           (current.c_lflag & ECHO) ? "ON" : "OFF",
-           (current.c_lflag & ICANON) ? "ON" : "OFF");
-}
-
 int main(int argc, char *argv[])
 {
   using_history();
@@ -474,8 +463,8 @@ int main(int argc, char *argv[])
       }
       else if (c == CTRLD_ASCII) // eof
       {
-        return 2;
         tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
+        return 2;
       }
       else if (c == '\n' || c == '\r')
       {
@@ -489,10 +478,21 @@ int main(int argc, char *argv[])
           write(STDOUT_FILENO, "\b \b", sizeof(char) * 3); // \b move cursor one position left, print a space over old char, ove cursor one position left again
         }
       }
+      else if (c == 27) // add arrow up/down history
+      {
+        printf("escape\n");
+        read(STDIN_FILENO, &c, sizeof(char));
+        if (c == 91)
+          printf("[\n");
+        read(STDIN_FILENO, &c, sizeof(char));
+        if (c == 65)
+          printf("A\n");
+        
+        break;
+      }
       else
       {
         line[length++] = c;
-        fprintf(stderr, "[writing %d '%c']\n", (unsigned char)c, c);
         write(STDOUT_FILENO, &c, sizeof(char));
       }
     }
