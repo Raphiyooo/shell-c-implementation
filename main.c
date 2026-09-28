@@ -498,6 +498,8 @@ int main(int argc, char *argv[])
             HIST_ENTRY* list = history_get(history_base + history_length - history_index);
             if (list != NULL)
               write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+            strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
+            length = strlen(list->line);
           }
           else if (c == 'B')
           {
@@ -509,12 +511,15 @@ int main(int argc, char *argv[])
             else
             {
               write(STDOUT_FILENO, "\r\033[K$ ", 6); // \r move cursor to beginning, rest is to clear terminal from cursor to end of line
+              history_index = 0;
               length = 0;
               continue;
             }
             HIST_ENTRY* list = history_get(history_base + history_length - history_index);
             if (list != NULL)
               write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+            strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
+            length = strlen(list->line);
           }
           else
             fprintf(stderr, "Unknown input\n"); // means input started with Esc[ but something different followed
@@ -530,7 +535,6 @@ int main(int argc, char *argv[])
     printf("\n");
     char *line_copy = strdup(line);
     // addToHistory(input_history, line_copy, &counting_input);
-    add_history(line_copy);
 
     char output[10][1024];
     size_t amount_tokens = 0;
@@ -543,6 +547,8 @@ int main(int argc, char *argv[])
     int return_value = redirect_output(output, &amount_tokens, &target_fd, &redirected, &saved_fd);
     if (return_value != 0)
       return 1;
+    if (strcmp(command, "") != 0)
+      add_history(line_copy);
 
     if (strcmp(command, "exit") == 0)
       break;
@@ -559,6 +565,9 @@ int main(int argc, char *argv[])
     else if (strcmp(command, "history") == 0)
     {
       handleHistory(output, amount_tokens);
+    }
+    else if (strcmp(command, "") == 0)
+    {
     }
     else
     {
