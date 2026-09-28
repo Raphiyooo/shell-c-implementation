@@ -444,6 +444,7 @@ int main(int argc, char *argv[])
 
     printf("$ ");
     char c = '0';
+    size_t length = 0;
     size_t capacity = 100;
     char* line = malloc(sizeof(char) * capacity);
     if (line == NULL)
@@ -451,7 +452,7 @@ int main(int argc, char *argv[])
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       return 1;
     }
-    size_t length = 0;
+    size_t history_index = 0;
     while (length < capacity - 1)
     {
       ssize_t ret_val = read(STDIN_FILENO, &c, sizeof(char));
@@ -480,15 +481,44 @@ int main(int argc, char *argv[])
       }
       else if (c == 27) // add arrow up/down history
       {
-        printf("escape\n");
         read(STDIN_FILENO, &c, sizeof(char));
-        if (c == 91)
-          printf("[\n");
-        read(STDIN_FILENO, &c, sizeof(char));
-        if (c == 65)
-          printf("A\n");
-        
-        break;
+        if (c == '[')
+        {
+          read(STDIN_FILENO, &c, sizeof(char));
+          if (c == 'A')
+          {
+            // arrow up
+            if (history_index < (size_t) history_length)
+            {
+              history_index++;
+              write(STDOUT_FILENO, "\r\033[K$ ", 6);
+            }
+            else
+              continue;
+            HIST_ENTRY* list = history_get(history_base + history_length - history_index);
+            if (list != NULL)
+              write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+          }
+          else if (c == 'B')
+          {
+            if (history_index > 1)
+            {
+              history_index--;
+              write(STDOUT_FILENO, "\r\033[K$ ", 6);
+            }
+            else
+            {
+              write(STDOUT_FILENO, "\r\033[K$ ", 6); // \r move cursor to beginning, rest is to clear terminal from cursor to end of line
+              length = 0;
+              continue;
+            }
+            HIST_ENTRY* list = history_get(history_base + history_length - history_index);
+            if (list != NULL)
+              write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+          }
+          else
+            fprintf(stderr, "Unknown input\n"); // means input started with Esc[ but something different followed
+        }
       }
       else
       {
