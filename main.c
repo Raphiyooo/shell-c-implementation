@@ -398,15 +398,96 @@ void handleHistory(char output[][1024], size_t amount_tokens)
     start_index = 1;
   else if (amount_tokens == 2)
   {
-    char* endptr = NULL;
+    char *endptr = NULL;
     long convert_commands_show = strtol(output[1], &endptr, 10);
     if (*endptr != '\0')
     {
       fprintf(stderr, "Invalid number\n");
       return;
     }
-    if ((size_t) convert_commands_show < (size_t) history_length)
-      start_index = (size_t) history_length - (size_t) convert_commands_show + 1;
+    if ((size_t)convert_commands_show < (size_t)history_length)
+      start_index = (size_t)history_length - (size_t)convert_commands_show + 1;
+  }
+  else if (amount_tokens == 3)
+  {
+    if (strcmp(output[1], "-w") == 0)
+    {
+      int fd = open(output[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      if (fd == -1)
+      {
+        fprintf(stderr, "open");
+        return;
+      }
+      for (size_t i = start_index; i < end_index + 1; i++)
+      {
+        HIST_ENTRY *entry = history_get(i);
+        if (entry != NULL && entry->line != NULL)
+          write(fd, entry->line, strlen(entry->line));
+        write(fd, "\n", sizeof(char));
+      }
+      close(fd);
+    }
+    else if (strcmp(output[1], "-r") == 0)
+    {
+      int fd = open(output[2], O_RDONLY, 0644);
+      if (fd == -1)
+      {
+        fprintf(stderr, "open");
+        return;
+      }
+      char buffer[100];
+      char line[100];
+      size_t line_length = 0;
+      ssize_t bytes_read;
+      while ((bytes_read = read(fd, buffer, sizeof(buffer))) > 0)
+      {
+        for (size_t i = 0; i < (size_t)bytes_read; i++)
+        {
+          if (buffer[i] == '\n')
+          {
+            line[line_length] = '\0';
+            add_history(line);
+            line_length = 0;
+          }
+          else
+            line[line_length++] = buffer[i];
+        }
+      }
+      if (line_length > 0)
+      {
+        line[line_length] = '\0';
+        add_history(line);
+      }
+      close(fd);
+    }
+    else if (strcmp(output[1], "-a") == 0)
+    {
+      int fd = open(output[2], O_RDWR | O_APPEND, 0644);
+      if (fd == -1)
+      {
+        fprintf(stderr, "open");
+        return;
+      }
+      off_t bytes_moved = lseek(fd, 0, SEEK_END);
+      if (bytes_moved > 0) // check if it moved, else it means file is empty
+      {
+        lseek(fd, -1, SEEK_END); // this is possible since i tested it before
+        char last_char;
+        read(fd, &last_char, sizeof(char));
+        if (last_char != '\n')
+          write(fd, "\n", sizeof(char));
+      }
+
+      for (size_t i = start_index; i < end_index + 1; i++)
+      {
+        HIST_ENTRY *entry = history_get(i);
+        if (entry != NULL && entry->line != NULL)
+          write(fd, entry->line, strlen(entry->line));
+        write(fd, "\n", sizeof(char));
+      }
+      close(fd);
+    }
+    return;
   }
   else
   {
@@ -415,11 +496,53 @@ void handleHistory(char output[][1024], size_t amount_tokens)
   }
   for (size_t i = start_index; i < end_index + 1; i++)
   {
-    HIST_ENTRY* entry = history_get(i);
+    HIST_ENTRY *entry = history_get(i);
     if (entry != NULL && entry->line != NULL)
-      printf("%zu  %s\n", i, entry->line);
+      printf("  %zu  %s\n", i, entry->line);
   }
-  
+}
+
+int loadHistory(char history_path[])
+{
+  char* environment = getenv(HOMEPATH);
+  if (environment == NULL)
+  {
+    fprintf(stderr, "Couldnt load environment\n");
+    return 1;
+  }
+  snprintf(history_path, 1024, "%s/.customshell_history", environment);
+
+  int fd = open(history_path, O_CREAT | O_RDONLY, 0600); // only user can read/write
+  if (fd == -1)
+  {
+    fprintf(stderr, "open");
+    return 1;
+  }
+  char buffer[100];
+  char line[100];
+  size_t line_length = 0;
+  ssize_t bytes_read;
+  while ((bytes_read = read(fd, buffer, sizeof(buffer))) > 0)
+  {
+    for (size_t i = 0; i < (size_t)bytes_read; i++)
+    {
+      if (buffer[i] == '\n')
+      {
+        line[line_length] = '\0';
+        add_history(line);
+        line_length = 0;
+      }
+      else
+        line[line_length++] = buffer[i];
+    }
+  }
+  if (line_length > 0)
+  {
+    line[line_length] = '\0';
+    add_history(line);
+  }
+  close(fd);
+  return 0;
 }
 
 void addToHistory(char *input)
@@ -428,109 +551,136 @@ void addToHistory(char *input)
   add_history(input);
 }
 
-int main(int argc, char *argv[])
+int readUserInput(char *line, size_t *length, size_t capacity)
 {
-  using_history();
+  char c = '0';
+  size_t history_index = 0;
+  while (*length < capacity - 1)
+  {
+    ssize_t ret_val = read(STDIN_FILENO, &c, sizeof(char));
+    if (ret_val == -1)
+    {
+      fprintf(stderr, "Reading failed\n");
+      return 1;
+    }
+    else if (c == CTRLD_ASCII) // eof
+      return 1;
+    else if (c == '\n' || c == '\r')
+      break;
+    else if (c == 127)
+    {
+      if (*length > 0)
+      {
+        line[--(*length)] = '\0';
+        write(STDOUT_FILENO, "\b \b", sizeof(char) * 3); // \b move cursor one position left, print a space over old char, ove cursor one position left again
+      }
+    }
+    else if (c == 27) // add arrow up/down history
+    {
+      read(STDIN_FILENO, &c, sizeof(char));
+      if (c == '[')
+      {
+        read(STDIN_FILENO, &c, sizeof(char));
+        if (c == 'A')
+        {
+          // arrow up
+          if (history_index < (size_t)history_length)
+          {
+            history_index++;
+            write(STDOUT_FILENO, "\r\033[K$ ", 6);
+          }
+          else
+            continue;
+          HIST_ENTRY *list = history_get(history_base + history_length - history_index);
+          if (list != NULL)
+            write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+          strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
+          *length = strlen(list->line);
+        }
+        else if (c == 'B')
+        {
+          if (history_index > 1)
+          {
+            history_index--;
+            write(STDOUT_FILENO, "\r\033[K$ ", 6);
+          }
+          else
+          {
+            write(STDOUT_FILENO, "\r\033[K$ ", 6); // \r move cursor to beginning, rest is to clear terminal from cursor to end of line
+            history_index = 0;
+            *length = 0;
+            continue;
+          }
+          HIST_ENTRY *list = history_get(history_base + history_length - history_index);
+          if (list != NULL)
+            write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+          strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
+          *length = strlen(list->line);
+        }
+        else
+          fprintf(stderr, "Unknown input\n"); // means input started with Esc[ but something different followed
+      }
+    }
+    else
+    {
+      line[(*length)++] = c;
+      write(STDOUT_FILENO, &c, sizeof(char));
+    }
+  }
+  return 0;
+}
+
+void setTerminalMode(struct termios *old_attr)
+{
   // set terminal into raw/non canonical mode
-  struct termios old_attr;
-  tcgetattr(STDIN_FILENO, &old_attr);
-  struct termios new_attr = old_attr;
+  tcgetattr(STDIN_FILENO, old_attr);
+  struct termios new_attr = *old_attr;
   new_attr.c_lflag &= ~ICANON; // disable canonical mode so i can process byte by byte
   new_attr.c_lflag &= ~ECHO;
   tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
+}
+
+int add_to_history(char* line_copy, char history_path[])
+{
+  add_history(line_copy); // put it into readline internally arrow up down works
+  int fd = open(history_path, O_WRONLY | O_APPEND, 0644);
+  if (fd == -1)
+  {
+    fprintf(stderr, "History couldnt be opened\n");
+    return 1;
+  }
+  write(fd, line_copy, strlen(line_copy));
+  write(fd, "\n", sizeof(char));
+  return 0;
+}
+
+int main(int argc, char *argv[])
+{
+  char history_path[1024];
+  int ret_value = loadHistory(history_path);
+  if (ret_value != 0)
+    return 1;
+
+  struct termios old_attr;
+  using_history();
+  setTerminalMode(&old_attr);
   while (1)
   {
     setbuf(stdout, NULL);
 
     printf("$ ");
-    char c = '0';
     size_t length = 0;
     size_t capacity = 100;
-    char* line = malloc(sizeof(char) * capacity);
+    char *line = malloc(sizeof(char) * capacity);
     if (line == NULL)
+      return 1;
+    int ret_value = readUserInput(line, &length, capacity);
+    if (ret_value != 0)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       return 1;
     }
-    size_t history_index = 0;
-    while (length < capacity - 1)
-    {
-      ssize_t ret_val = read(STDIN_FILENO, &c, sizeof(char));
-      if (ret_val == -1)
-      {
-        fprintf(stderr, "Reading failed\n");
-        tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
-        return 1;
-      }
-      else if (c == CTRLD_ASCII) // eof
-      {
-        tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
-        return 2;
-      }
-      else if (c == '\n' || c == '\r')
-      {
-        break;
-      }
-      else if (c == 127)
-      {
-        if (length > 0)
-        {
-          line[--length] = '\0';
-          write(STDOUT_FILENO, "\b \b", sizeof(char) * 3); // \b move cursor one position left, print a space over old char, ove cursor one position left again
-        }
-      }
-      else if (c == 27) // add arrow up/down history
-      {
-        read(STDIN_FILENO, &c, sizeof(char));
-        if (c == '[')
-        {
-          read(STDIN_FILENO, &c, sizeof(char));
-          if (c == 'A')
-          {
-            // arrow up
-            if (history_index < (size_t) history_length)
-            {
-              history_index++;
-              write(STDOUT_FILENO, "\r\033[K$ ", 6);
-            }
-            else
-              continue;
-            HIST_ENTRY* list = history_get(history_base + history_length - history_index);
-            if (list != NULL)
-              write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
-            strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
-            length = strlen(list->line);
-          }
-          else if (c == 'B')
-          {
-            if (history_index > 1)
-            {
-              history_index--;
-              write(STDOUT_FILENO, "\r\033[K$ ", 6);
-            }
-            else
-            {
-              write(STDOUT_FILENO, "\r\033[K$ ", 6); // \r move cursor to beginning, rest is to clear terminal from cursor to end of line
-              history_index = 0;
-              length = 0;
-              continue;
-            }
-            HIST_ENTRY* list = history_get(history_base + history_length - history_index);
-            if (list != NULL)
-              write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
-            strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
-            length = strlen(list->line);
-          }
-          else
-            fprintf(stderr, "Unknown input\n"); // means input started with Esc[ but something different followed
-        }
-      }
-      else
-      {
-        line[length++] = c;
-        write(STDOUT_FILENO, &c, sizeof(char));
-      }
-    }
+
     line[length] = '\0';
     printf("\n");
     char *line_copy = strdup(line);
@@ -548,7 +698,7 @@ int main(int argc, char *argv[])
     if (return_value != 0)
       return 1;
     if (strcmp(command, "") != 0)
-      add_history(line_copy);
+      add_to_history(line_copy, history_path);
 
     if (strcmp(command, "exit") == 0)
       break;
