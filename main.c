@@ -27,6 +27,12 @@
 
 extern char **environ;
 
+typedef struct DeclareVariable
+{
+  char name[1024];
+  char type[1024];
+} DeclareVariable;
+
 bool isSpecialChar(char c)
 {
   const char *specialChars = "'\\\"$*? n_123456789";
@@ -51,7 +57,8 @@ bool isBuiltIn(char *command)
       "type",
       "pwd",
       "cd",
-      "history"};
+      "history",
+      "declare"};
   size_t num_built_ins = sizeof(built_ins) / sizeof(built_ins[0]);
   for (size_t i = 0; i < num_built_ins; i++)
   {
@@ -504,7 +511,7 @@ void handleHistory(char output[][1024], size_t amount_tokens)
 
 int loadHistory(char history_path[])
 {
-  char* environment = getenv(HOMEPATH);
+  char *environment = getenv(HOMEPATH);
   if (environment == NULL)
   {
     fprintf(stderr, "Couldnt load environment\n");
@@ -640,7 +647,7 @@ void setTerminalMode(struct termios *old_attr)
   tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
 }
 
-int add_to_history(char* line_copy, char history_path[])
+int add_to_history(char *line_copy, char history_path[])
 {
   add_history(line_copy); // put it into readline internally arrow up down works
   int fd = open(history_path, O_WRONLY | O_APPEND, 0644);
@@ -654,13 +661,99 @@ int add_to_history(char* line_copy, char history_path[])
   return 0;
 }
 
+int handleDeclare(char output[][1024], DeclareVariable *new_variable, size_t *variable_count)
+{
+  if ('0' <= output[1][0] && '9' >= output[1][0])
+  {
+    printf("declare: `%s': not a valid identifer\n", output[1]);
+  }
+  char *line = strchr(output[1], '='); // returns a char* to the first ocurrence of =
+  if (line != NULL)
+  {
+    if (*variable_count >= 1024)
+      return 1;
+    *line = '\0';
+    snprintf(new_variable[*variable_count].type, sizeof(new_variable[*variable_count].type), "%s", output[1]);
+    snprintf(new_variable[*variable_count].name, sizeof(new_variable[*variable_count].name), "%s", line + 1); // goes to first char of word and reads until \0
+    (*variable_count)++;
+  }
+  else if (strcmp(output[1], "-p") == 0)
+  {
+    for (size_t i = 0; i < *variable_count; i++)
+    {
+      if (strcmp(new_variable[i].type, output[2]) == 0)
+      {
+        printf("declare -- %s=%s\n", new_variable[i].type, new_variable[i].name);
+        return 0;
+      }
+    }
+    printf("declare: %s: not found\n", output[2]);
+  }
+  else
+  {
+    printf("declare: variable: not found");
+  }
+  return 0;
+}
+
+int variable_expansion(char output[][1024], size_t* amount_tokens, DeclareVariable *variables, size_t variable_count)
+{
+  for (size_t i = 1; i < *amount_tokens; i++)
+  {
+    if (output[i][0] == '$')
+    {
+      if (output[i][1] == '{')
+      {
+        // brace expansion
+        char *closing_brace = strchr(output[i], '}');
+        if (closing_brace == NULL)
+        {
+          fprintf(stderr, "No valid input\n");
+          return 1;
+        }
+        *closing_brace = '\0';
+        char after_closing_bracket[1024] = "";
+        if (*(closing_brace + 1) != '\0')
+        {
+          snprintf(after_closing_bracket, sizeof(after_closing_bracket), "%s", closing_brace + 1);
+        }
+        char *variable_name = output[i] + 2;
+        for (size_t j = 0; j < variable_count; j++)
+        {
+          if (strcmp(variable_name, variables[j].type) == 0)
+          {
+            snprintf(output[i], sizeof(output[i]), "%s%s", variables[j].name, after_closing_bracket);
+            break;
+          }
+          else
+          {
+            snprintf(output[i], sizeof(output[i]), "%s", after_closing_bracket);
+            break;
+          }
+        }
+      }
+      else
+      {
+        for (size_t j = 0; j < variable_count; j++)
+        {
+          if (strcmp(output[i] + 1, variables[j].type) == 0)
+            snprintf(output[i], sizeof(output[i]), "%s", variables[j].name);
+          break;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
 int main(int argc, char *argv[])
 {
   char history_path[1024];
   int ret_value = loadHistory(history_path);
   if (ret_value != 0)
     return 1;
-
+  DeclareVariable variable[1024];
+  size_t variable_count = 0;
   struct termios old_attr;
   using_history();
   setTerminalMode(&old_attr);
@@ -694,8 +787,11 @@ int main(int argc, char *argv[])
     int saved_fd = -1;
     int target_fd = -1;
     bool redirected = false;
-    int return_value = redirect_output(output, &amount_tokens, &target_fd, &redirected, &saved_fd);
-    if (return_value != 0)
+    ret_value = variable_expansion(output, &amount_tokens, variable, variable_count);
+    if (ret_value != 0)
+      return 1;
+    ret_value = redirect_output(output, &amount_tokens, &target_fd, &redirected, &saved_fd);
+    if (ret_value != 0)
       return 1;
     if (strcmp(command, "") != 0)
       add_to_history(line_copy, history_path);
@@ -716,6 +812,8 @@ int main(int argc, char *argv[])
     {
       handleHistory(output, amount_tokens);
     }
+    else if (strcmp(command, "declare") == 0)
+      handleDeclare(output, variable, &variable_count);
     else if (strcmp(command, "") == 0)
     {
     }
