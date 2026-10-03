@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <dirent.h>
 
 #ifdef _WIN32
 #define PATHSEP ";"
@@ -565,7 +566,8 @@ int readUserInput(char *line, size_t *length, size_t capacity)
   while (*length < capacity - 1)
   {
     ssize_t ret_val = read(STDIN_FILENO, &c, sizeof(char));
-    if (ret_val == -1)
+    if (
+      ret_val == -1)
     {
       fprintf(stderr, "Reading failed\n");
       return 1;
@@ -574,7 +576,7 @@ int readUserInput(char *line, size_t *length, size_t capacity)
       return 1;
     else if (c == '\n' || c == '\r')
       break;
-    else if (c == 127)
+    else if (c == 127) // backwards
     {
       if (*length > 0)
       {
@@ -627,6 +629,72 @@ int readUserInput(char *line, size_t *length, size_t capacity)
         else
           fprintf(stderr, "Unknown input\n"); // means input started with Esc[ but something different followed
       }
+    }
+    else if (c == '\t')
+    {
+      size_t length_before_argument = 0;
+      size_t index = 0;
+      char argument[1024];
+      for (size_t i = 0; i < *length; i++)
+      {
+        if (i == 0)
+        {
+          while (line[i++] != ' ') // skip
+            length_before_argument++;
+          length_before_argument++;
+        }
+        argument[index++] = line[i];
+        
+      }
+      argument[index] = '\0';
+      char full_path_cur_dir[1024];
+      getcwd(full_path_cur_dir, sizeof(full_path_cur_dir));
+
+      DIR* directory;
+      struct dirent* entry;
+      directory = opendir(full_path_cur_dir);
+      if (directory == NULL)
+      {
+        perror("Error opening directory\n");
+        return 1;
+      }
+      char completed_file[1024];
+      size_t cur_highest_counter = 0;
+      while ((entry = readdir(directory)) != NULL)
+      {
+        char* file_name = entry->d_name;
+        size_t counter = 0;
+        for (size_t i = 0; i < strlen(file_name); i++)
+        {
+          if (file_name[i] == argument[i])
+            counter++;
+          else
+            break;
+        }
+        if (counter > cur_highest_counter)
+        {
+          snprintf(completed_file, sizeof(completed_file), "%s", file_name);
+          cur_highest_counter = counter;
+        }
+      }
+      if (closedir(directory) == -1)
+      {
+        perror("Error closing directory\n");
+        return 1;
+      }
+      index = 0;
+      *length = length_before_argument + strlen(completed_file);
+      size_t i = 0;
+      for (i = length_before_argument; i < *length; i++)
+      {
+        line[i] = completed_file[index++];
+        
+      }
+      line[i] = '\0';
+      write(STDOUT_FILENO, "\r\033[K$ ", 6);
+      write(STDOUT_FILENO, line, sizeof(char) * strlen(line));
+      
+
     }
     else
     {
