@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +27,7 @@
 #endif
 
 #define CTRLD_ASCII 4
+#define MAX_MATCHES 100
 
 extern char **environ;
 
@@ -563,11 +566,11 @@ int readUserInput(char *line, size_t *length, size_t capacity)
 {
   char c = '0';
   size_t history_index = 0;
+  bool pressed_tab = false;
   while (*length < capacity - 1)
   {
     ssize_t ret_val = read(STDIN_FILENO, &c, sizeof(char));
-    if (
-      ret_val == -1)
+    if (ret_val == -1)
     {
       fprintf(stderr, "Reading failed\n");
       return 1;
@@ -644,37 +647,60 @@ int readUserInput(char *line, size_t *length, size_t capacity)
           length_before_argument++;
         }
         argument[index++] = line[i];
-        
       }
       argument[index] = '\0';
       char full_path_cur_dir[1024];
       getcwd(full_path_cur_dir, sizeof(full_path_cur_dir));
 
-      DIR* directory;
-      struct dirent* entry;
+      DIR *directory;
+      struct dirent *entry;
       directory = opendir(full_path_cur_dir);
       if (directory == NULL)
       {
         perror("Error opening directory\n");
         return 1;
       }
-      char completed_file[1024];
+      char completed_file[1024] = "";
+      char matches[MAX_MATCHES][1024];
+      size_t match_count = 0;
       size_t cur_highest_counter = 0;
       while ((entry = readdir(directory)) != NULL)
       {
-        char* file_name = entry->d_name;
-        size_t counter = 0;
-        for (size_t i = 0; i < strlen(file_name); i++)
+        char *file_name = entry->d_name;
+        size_t matching_chars = 0;
+        if (strlen(file_name) >= strlen(argument))
         {
-          if (file_name[i] == argument[i])
-            counter++;
-          else
-            break;
-        }
-        if (counter > cur_highest_counter)
-        {
-          snprintf(completed_file, sizeof(completed_file), "%s", file_name);
-          cur_highest_counter = counter;
+          for (size_t i = 0; i < strlen(argument); i++)
+          {
+            if (file_name[i] == argument[i])
+            {
+              matching_chars++;
+            }
+            else // there was a char that didnt match so not a candidate
+            {
+              matching_chars = 0;
+              break;
+            }
+          }
+          if (matching_chars != 0)
+          {
+            if (cur_highest_counter == matching_chars)
+            {
+              snprintf(matches[match_count++], strlen(file_name) + 1, "%s", file_name);
+              completed_file[0] = '\0';
+            }
+            else if (cur_highest_counter < matching_chars)
+            {
+              snprintf(completed_file, strlen(file_name) + 1, "%s", file_name);
+              for (size_t i = 0; i < match_count; i++)
+              {
+                matches[i][0] = '\0';
+              }
+              snprintf(matches[0], strlen(file_name) + 1, "%s", file_name);
+              match_count = 1;
+              cur_highest_counter = matching_chars;
+            }
+          }
         }
       }
       if (closedir(directory) == -1)
@@ -682,19 +708,40 @@ int readUserInput(char *line, size_t *length, size_t capacity)
         perror("Error closing directory\n");
         return 1;
       }
+      if (completed_file[0] == '\0')
+      {
+        if (pressed_tab == false)
+        {
+          write(STDOUT_FILENO, "\x07", sizeof(char));
+          pressed_tab = true;
+          continue;
+        }
+        else
+        {
+          if (match_count != 0)
+          {
+            printf("\n");
+            for (size_t i = 0; i < match_count; i++)
+            {
+              printf("%s  ", matches[i]);
+            }
+            printf("\n");
+            write(STDOUT_FILENO, "\r\033[K$ ", 6);
+            write(STDOUT_FILENO, line, sizeof(char) * strlen(line));
+          }
+          continue;
+        }
+      }
       index = 0;
       *length = length_before_argument + strlen(completed_file);
       size_t i = 0;
       for (i = length_before_argument; i < *length; i++)
       {
         line[i] = completed_file[index++];
-        
       }
       line[i] = '\0';
       write(STDOUT_FILENO, "\r\033[K$ ", 6);
       write(STDOUT_FILENO, line, sizeof(char) * strlen(line));
-      
-
     }
     else
     {
@@ -865,7 +912,11 @@ int main(int argc, char *argv[])
       add_to_history(line_copy, history_path);
 
     if (strcmp(command, "exit") == 0)
+    {
+      free(line_copy);
+      free(line);
       break;
+    }
     else if (strcmp(command, "echo") == 0)
       handleEcho(output, amount_tokens);
     else if (strcmp(command, "type") == 0)
