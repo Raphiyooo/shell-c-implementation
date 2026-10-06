@@ -564,60 +564,6 @@ void addToHistory(char *input)
   add_history(input);
 }
 
-int pipelineControl(char output[][1024], char *command, char *line, char *line_copy, size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
-{
-  size_t amount_pipelines = 0;
-  char pipeline_seperated_output[MAX_PIPELINES][MAX_ARGUMENTS][1024];
-  for (size_t i = 0; i < amount_tokens; i++)
-  {
-    if (output[i][0] == '|')
-    {
-      amount_pipelines++;
-    }
-  }
-  if (amount_pipelines == 0)
-    return 0;
-  else
-  {
-    size_t pipeline_index = 0;
-    size_t argument_index = 0;
-    for (size_t i = 0; i < amount_tokens; i++)
-    {
-      if (output[i][0] == '|')
-      {
-        pipeline_index++;
-        argument_index = 0;
-        continue;
-      }
-      snprintf(pipeline_seperated_output[pipeline_index][argument_index++], strlen(output[i]), "%s", output[i]);
-    }
-    // 3d array filled
-    // creating pipes
-    size_t commands_count = amount_pipelines + 1;
-    pid_t pid[commands_count];
-    int fd[amount_pipelines][2];
-    for (size_t i = 0; i < amount_pipelines; i++)
-    {
-      if (pipe(fd[i]) == -1)
-        return 1;
-    }
-    for (size_t i = 0; i < commands_count; i++)
-    {
-      pid[i] = fork();
-      if (pid[i] == -1)
-        return 1;
-      if (pid[i] == 0)
-      {
-        // child process
-      }
-    }
-    
-
-  }
-
-  return 0;
-}
-
 int readUserInput(char *line, size_t *length, size_t capacity)
 {
   char c = '0';
@@ -917,7 +863,7 @@ int variable_expansion(char output[][1024], size_t *amount_tokens, DeclareVariab
   return 0;
 }
 
-int executingCommand(char output[][1024], char *command, char *line, char *line_copy, size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
+int executingCommand(char output[][1024], char *command, size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
 {
   if (strcmp(command, "exit") == 0)
     return 1;
@@ -949,6 +895,119 @@ int executingCommand(char output[][1024], char *command, char *line, char *line_
     else
       fprintf(stderr, "%s: command not found\n", command);
   }
+  return 0;
+}
+
+int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
+{
+  size_t amount_pipelines = 0;
+  char pipeline_seperated_output[MAX_PIPELINES][MAX_ARGUMENTS][1024];
+  int pipeline_token_count[MAX_PIPELINES];
+  for (size_t i = 0; i < amount_tokens; i++)
+  {
+    if (output[i][0] == '|')
+    {
+      amount_pipelines++;
+    }
+  }
+  if (amount_pipelines == 0)
+    return 0;
+  else
+  {
+    size_t pipeline_index = 0;
+    size_t argument_index = 0;
+    for (size_t i = 0; i < amount_tokens; i++)
+    {
+      if (output[i][0] == '|')
+      {
+        pipeline_index++;
+        argument_index = 0;
+        continue;
+      }
+      pipeline_token_count[pipeline_index]++;
+      snprintf(pipeline_seperated_output[pipeline_index][argument_index++], strlen(output[i]) + 1, "%s", output[i]);
+    }
+    // 3d array filled
+    // creating pipes
+    size_t commands_count = amount_pipelines + 1;
+    pid_t pid[commands_count];
+    int fd[amount_pipelines][2];
+    for (size_t i = 0; i < amount_pipelines; i++)
+    {
+      if (pipe(fd[i]) == -1)
+      {
+        fprintf(stderr, "Pipe creation failed\n");
+        return 1;
+      }
+    }
+    for (size_t i = 0; i < commands_count; i++)
+    {
+      pid[i] = fork();
+      if (pid[i] == -1)
+      {
+        fprintf(stderr, "Forking failed\n");
+        return 1;
+      }
+      if (pid[i] == 0)
+      {
+        // child processes
+        if (i == 0)
+        {
+          if (dup2(fd[i][1], STDOUT_FILENO) == -1)
+            fprintf(stderr, "Duplicating file descriptor failed\n");
+          for (size_t j = 0; j < amount_pipelines; j++)
+          {
+            close(fd[j][0]);
+            close(fd[j][1]);
+          }
+          
+          executingCommand(pipeline_seperated_output[i], pipeline_seperated_output[i][0], pipeline_token_count[i], variable, variable_count);
+          exit(0);
+        }
+        else if (i == commands_count - 1)
+        {
+          if (dup2(fd[i - 1][0], STDIN_FILENO) == -1)
+            fprintf(stderr, "Duplicating file descriptor failed\n");
+          for (size_t j = 0; j < amount_pipelines; j++)
+          {
+            close(fd[j][0]);
+            close(fd[j][1]);
+          }
+          executingCommand(pipeline_seperated_output[i], pipeline_seperated_output[i][0], pipeline_token_count[i], variable, variable_count);
+          exit(0);
+        }
+        else
+        {
+          if (dup2(fd[i - 1][0], STDIN_FILENO) == -1)
+            fprintf(stderr, "Duplicating file descriptor failed\n");
+          if (dup2(fd[i][1], STDOUT_FILENO) == -1)
+            fprintf(stderr, "Duplicating file descriptor failed\n");
+          for (size_t j = 0; j < amount_pipelines; j++)
+          {
+            close(fd[j][0]);
+            close(fd[j][1]);
+          }
+          executingCommand(pipeline_seperated_output[i], pipeline_seperated_output[i][0], pipeline_token_count[i], variable, variable_count);
+          exit(0);
+        }
+      }
+    }
+    for (size_t i = 0; i < amount_pipelines; i++)
+    {
+      close(fd[i][0]);
+      close(fd[i][1]);
+    }
+    
+
+    for (size_t i = 0; i < commands_count; i++)
+    {
+      waitpid(pid[i], NULL, 0);
+    }
+    
+
+  }
+
+  return 2;
 }
 
 void customFree(char *line, char *line_copy)
@@ -1011,16 +1070,21 @@ int main(int argc, char *argv[])
       customFree(line, line_copy);
       return 1;
     }
-    ret_value = pipelineControl(output, command, line, line_copy, amount_tokens, variable, variable_count);
-    if (ret_value != 0)
+    ret_value = pipelineControl(output, amount_tokens, variable, variable_count);
+    if (ret_value == 1)
     {
       customFree(line, line_copy);
       return 1;
     }
+    else if (ret_value == 2)
+    {
+      customFree(line, line_copy);
+      continue;
+    }
     if (strcmp(command, "") != 0)
       add_to_history(line_copy, history_path);
 
-    executingCommand(output, command, line, line_copy, amount_tokens, variable, variable_count);
+    executingCommand(output, command, amount_tokens, variable, variable_count);
     if (ret_value != 0)
     {
       customFree(line, line_copy);
