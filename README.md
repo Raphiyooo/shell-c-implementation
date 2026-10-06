@@ -12,14 +12,17 @@ However, I needed a way to analyse the quotes, double quotes, backslash within q
 save the input in a 2D char array, this way I can loop over the tokens in the array and can process each word one by another.
 
 ## What I learned
-- Safely handle user input
-- Making sure a program is working on every operating system
-- Working with multiple processes
-- Working with macros
+- Making a program working for every operating system
 - Using file descriptors
+- Process creation/execution
+- Environment variables/PATH lookup
+- Complex parsing/tokenization
+- Treminal control with termios
 
 ## Problems I encountered
 1. Handling difficult inputs including any form of quotes. 
 How did I decide to do this?
 I rethought my initial idea of reading user input by drawing my current system out on a blank sheet of paper. With this, I got a good overview of how I am currently reading in input and
-how I should do it.
+how I should do it. I implemented two versions before, however I saw that reading user input key by key is optimal for a shell. For that I had to change the terminal mode to *non canonical mode* and turn off the "ECHO" flag and write every keystroke to the terminal with the write() function.
+
+2. Managing ownership of dynamic

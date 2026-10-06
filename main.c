@@ -28,6 +28,8 @@
 
 #define CTRLD_ASCII 4
 #define MAX_MATCHES 100
+#define MAX_PIPELINES 10
+#define MAX_ARGUMENTS 10
 
 extern char **environ;
 
@@ -562,6 +564,60 @@ void addToHistory(char *input)
   add_history(input);
 }
 
+int pipelineControl(char output[][1024], char *command, char *line, char *line_copy, size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
+{
+  size_t amount_pipelines = 0;
+  char pipeline_seperated_output[MAX_PIPELINES][MAX_ARGUMENTS][1024];
+  for (size_t i = 0; i < amount_tokens; i++)
+  {
+    if (output[i][0] == '|')
+    {
+      amount_pipelines++;
+    }
+  }
+  if (amount_pipelines == 0)
+    return 0;
+  else
+  {
+    size_t pipeline_index = 0;
+    size_t argument_index = 0;
+    for (size_t i = 0; i < amount_tokens; i++)
+    {
+      if (output[i][0] == '|')
+      {
+        pipeline_index++;
+        argument_index = 0;
+        continue;
+      }
+      snprintf(pipeline_seperated_output[pipeline_index][argument_index++], strlen(output[i]), "%s", output[i]);
+    }
+    // 3d array filled
+    // creating pipes
+    size_t commands_count = amount_pipelines + 1;
+    pid_t pid[commands_count];
+    int fd[amount_pipelines][2];
+    for (size_t i = 0; i < amount_pipelines; i++)
+    {
+      if (pipe(fd[i]) == -1)
+        return 1;
+    }
+    for (size_t i = 0; i < commands_count; i++)
+    {
+      pid[i] = fork();
+      if (pid[i] == -1)
+        return 1;
+      if (pid[i] == 0)
+      {
+        // child process
+      }
+    }
+    
+
+  }
+
+  return 0;
+}
+
 int readUserInput(char *line, size_t *length, size_t capacity)
 {
   char c = '0';
@@ -811,7 +867,7 @@ int handleDeclare(char output[][1024], DeclareVariable *new_variable, size_t *va
   return 0;
 }
 
-int variable_expansion(char output[][1024], size_t* amount_tokens, DeclareVariable *variables, size_t variable_count)
+int variable_expansion(char output[][1024], size_t *amount_tokens, DeclareVariable *variables, size_t variable_count)
 {
   for (size_t i = 1; i < *amount_tokens; i++)
   {
@@ -861,6 +917,46 @@ int variable_expansion(char output[][1024], size_t* amount_tokens, DeclareVariab
   return 0;
 }
 
+int executingCommand(char output[][1024], char *command, char *line, char *line_copy, size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
+{
+  if (strcmp(command, "exit") == 0)
+    return 1;
+  else if (strcmp(command, "echo") == 0)
+    handleEcho(output, amount_tokens);
+  else if (strcmp(command, "type") == 0)
+    handleType(output, amount_tokens);
+  else if (strcmp(command, "pwd") == 0)
+    handlePwd();
+  else if (strcmp(command, "cd") == 0)
+    handleCd(output, amount_tokens);
+  else if (strcmp(command, "cat") == 0)
+    handleCat(output, amount_tokens);
+  else if (strcmp(command, "history") == 0)
+  {
+    handleHistory(output, amount_tokens);
+  }
+  else if (strcmp(command, "declare") == 0)
+    handleDeclare(output, variable, &variable_count);
+  else if (strcmp(command, "") == 0)
+  {
+  }
+  else
+  {
+    char *full_path = NULL;
+    bool is_executable = locateExecutableFiles(command, &full_path);
+    if (is_executable)
+      buildArgsArrayCallExecute(output, full_path, amount_tokens);
+    else
+      fprintf(stderr, "%s: command not found\n", command);
+  }
+}
+
+void customFree(char *line, char *line_copy)
+{
+  free(line_copy);
+  free(line);
+}
+
 int main(int argc, char *argv[])
 {
   char history_path[1024];
@@ -886,6 +982,7 @@ int main(int argc, char *argv[])
     if (ret_value != 0)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
+      free(line);
       return 1;
     }
 
@@ -904,47 +1001,32 @@ int main(int argc, char *argv[])
     bool redirected = false;
     ret_value = variable_expansion(output, &amount_tokens, variable, variable_count);
     if (ret_value != 0)
+    {
+      customFree(line, line_copy);
       return 1;
+    }
     ret_value = redirect_output(output, &amount_tokens, &target_fd, &redirected, &saved_fd);
     if (ret_value != 0)
+    {
+      customFree(line, line_copy);
       return 1;
+    }
+    ret_value = pipelineControl(output, command, line, line_copy, amount_tokens, variable, variable_count);
+    if (ret_value != 0)
+    {
+      customFree(line, line_copy);
+      return 1;
+    }
     if (strcmp(command, "") != 0)
       add_to_history(line_copy, history_path);
 
-    if (strcmp(command, "exit") == 0)
+    executingCommand(output, command, line, line_copy, amount_tokens, variable, variable_count);
+    if (ret_value != 0)
     {
-      free(line_copy);
-      free(line);
-      break;
+      customFree(line, line_copy);
+      return 1;
     }
-    else if (strcmp(command, "echo") == 0)
-      handleEcho(output, amount_tokens);
-    else if (strcmp(command, "type") == 0)
-      handleType(output, amount_tokens);
-    else if (strcmp(command, "pwd") == 0)
-      handlePwd();
-    else if (strcmp(command, "cd") == 0)
-      handleCd(output, amount_tokens);
-    else if (strcmp(command, "cat") == 0)
-      handleCat(output, amount_tokens);
-    else if (strcmp(command, "history") == 0)
-    {
-      handleHistory(output, amount_tokens);
-    }
-    else if (strcmp(command, "declare") == 0)
-      handleDeclare(output, variable, &variable_count);
-    else if (strcmp(command, "") == 0)
-    {
-    }
-    else
-    {
-      char *full_path = NULL;
-      bool is_executable = locateExecutableFiles(command, &full_path);
-      if (is_executable)
-        buildArgsArrayCallExecute(output, full_path, amount_tokens);
-      else
-        fprintf(stderr, "%s: command not found\n", command);
-    }
+
     if (redirected)
     {
       fflush(stdout);
@@ -953,8 +1035,7 @@ int main(int argc, char *argv[])
       close(saved_fd);
     }
 
-    free(line_copy);
-    free(line);
+    customFree(line, line_copy);
 
     line = NULL;
   }
