@@ -1016,6 +1016,12 @@ void customFree(char *line, char *line_copy)
   free(line);
 }
 
+void handle_sigint(int sig)
+{
+  (void) sig;
+  write(STDOUT_FILENO, "\n$ ", 3);
+}
+
 int main(int argc, char *argv[])
 {
   char history_path[1024];
@@ -1025,8 +1031,13 @@ int main(int argc, char *argv[])
   DeclareVariable variable[1024];
   size_t variable_count = 0;
   struct termios old_attr;
-  using_history();
   setTerminalMode(&old_attr);
+  using_history();
+  struct sigaction sa;
+  sa.sa_flags = SA_RESTART;
+  sa.sa_handler = &handle_sigint;
+  sa.sa_flags = 0;
+  sigaction(SIGINT, &sa, NULL);
   while (1)
   {
     setbuf(stdout, NULL);
@@ -1084,7 +1095,7 @@ int main(int argc, char *argv[])
     if (strcmp(command, "") != 0)
       add_to_history(line_copy, history_path);
 
-    executingCommand(output, command, amount_tokens, variable, variable_count);
+    ret_value = executingCommand(output, command, amount_tokens, variable, variable_count);
     if (ret_value != 0)
     {
       customFree(line, line_copy);
