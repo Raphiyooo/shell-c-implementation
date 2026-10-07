@@ -30,14 +30,38 @@
 #define MAX_MATCHES 100
 #define MAX_PIPELINES 10
 #define MAX_ARGUMENTS 10
+#define MAX_LINE_LENGTH 1024
 
 extern char **environ;
 
 typedef struct DeclareVariable
 {
-  char name[1024];
-  char type[1024];
+  char name[MAX_LINE_LENGTH];
+  char type[MAX_LINE_LENGTH];
 } DeclareVariable;
+
+typedef enum
+{
+  SUCCESS = 0,
+  ERR_READ,
+  ERR_WRITE,
+  ERR_FILE,
+  ERR_PIPE,
+  ERR_FORK,
+  ERR_MEMORY,
+  ERR_SYSTEM,
+  ERR_NOT_FOUND,
+  ERR_DUP,
+  INVALID_INPUT
+} ErrorCodes;
+
+typedef enum
+{
+  RESULT_CONTINUE = 11,
+  RESULT_BREAK,
+  RESULT_EOF,
+  EXIT
+} Result;
 
 bool isSpecialChar(char c)
 {
@@ -74,20 +98,30 @@ bool isBuiltIn(char *command)
   return false;
 }
 
-void addCommand(char **full_path, char *path, char *command)
+int addCommand(char **full_path, char *path, char *command)
 {
   *full_path = (char *)malloc(strlen(path) + 1 + strlen(command) + 1); // +1 for / and +1 for \0
+  if (*full_path == NULL)
+  {
+    fprintf(stderr, "Malloc failed\n");
+    return ERR_MEMORY;
+  }
   size_t len = strlen(path) + 1 + strlen(command) + 1;
-  if (!(*full_path))
-    return;
-  snprintf(*full_path, len, "%s/%s", path, command);
+  int ret = snprintf(*full_path, len, "%s/%s", path, command);
+  if (ret < 0)
+  {
+    fprintf(stderr, "fprintf failed\n");
+    return ERR_WRITE;
+  }
+
+  return SUCCESS;
 }
 
-bool locateExecutableFiles(char *args, char **full_path)
+int locateExecutableFiles(char *args, char **full_path)
 {
   char *paths_env = getenv("PATH");
   if (paths_env == NULL)
-    return false;
+    return ERR_SYSTEM;
   // needed so i dont modify the system
   char *paths_env_copy = strdup(paths_env);
 
@@ -100,13 +134,23 @@ bool locateExecutableFiles(char *args, char **full_path)
       free(*full_path);
       *full_path = NULL;
     }
-    addCommand(full_path, path, args);
+    int ret = addCommand(full_path, path, args);
+    if (ret == ERR_MEMORY)
+    {
+      free(paths_env_copy);
+      return ERR_MEMORY;
+    }
+    else if (ret == ERR_WRITE)
+    {
+      free(paths_env_copy);
+      return ERR_WRITE;
+    }
     if (access(*full_path, F_OK) == 0)
     {
       if (access(*full_path, X_OK) == 0)
       {
         free(paths_env_copy);
-        return true;
+        return SUCCESS;
       }
     }
     path = strtok_r(NULL, PATHSEP, &save_paths);
@@ -118,13 +162,16 @@ bool locateExecutableFiles(char *args, char **full_path)
   }
 
   free(paths_env_copy);
-  return false;
+  return ERR_NOT_FOUND;
 }
 
-void handleType(char output[][1024], size_t amount_tokens)
+int handleType(char output[][MAX_LINE_LENGTH], size_t amount_tokens)
 {
   if (amount_tokens < 2)
-    return;
+  {
+    fprintf(stderr, "Invalid Input\n");
+    return INVALID_INPUT;
+  }
   for (size_t i = 1; i < amount_tokens; i++)
   {
     char *full_path = NULL;
@@ -132,17 +179,38 @@ void handleType(char output[][1024], size_t amount_tokens)
     if (builtIn)
     {
       printf("%s is a shell builtin\n", output[i]);
-      return;
+      return SUCCESS;
     }
-    bool got_executable = locateExecutableFiles(output[i], &full_path);
-    if (got_executable)
+    int ret = locateExecutableFiles(output[i], &full_path);
+    if (ret == SUCCESS)
+    {
       printf("%s is %s\n", output[i], full_path);
-    else
+    }
+    else if (ret == ERR_NOT_FOUND)
+    {
       printf("%s: not found\n", output[i]);
+    }
+    else if (ret == ERR_MEMORY)
+    {
+      if (full_path != NULL)
+      {
+        free(full_path);
+      }
+      return ERR_MEMORY;
+    }
+    else
+    {
+      if (full_path != NULL)
+      {
+        free(full_path);
+      }
+      return ERR_SYSTEM;
+    }
 
     if (full_path != NULL)
       free(full_path);
   }
+  return SUCCESS;
 }
 
 void executeProgram(char *full_path, char *tokenized_args_array[])
@@ -164,9 +232,9 @@ void executeProgram(char *full_path, char *tokenized_args_array[])
   }
 }
 
-void buildArgsArrayCallExecute(char output[][1024], char *full_path, size_t amount_tokens)
+void buildArgsArrayCallExecute(char output[][MAX_LINE_LENGTH], char *full_path, size_t amount_tokens)
 {
-  char *arguments[10];
+  char *arguments[MAX_ARGUMENTS];
   for (size_t i = 0; i < amount_tokens; i++)
   {
     arguments[i] = output[i];
@@ -176,29 +244,45 @@ void buildArgsArrayCallExecute(char output[][1024], char *full_path, size_t amou
   executeProgram(full_path, arguments);
 }
 
-void handlePwd(void)
+int handlePwd(void)
 {
-  char full_path_cur_dir[1024] = "";
+  char full_path_cur_dir[MAX_LINE_LENGTH] = "";
   if (getcwd(full_path_cur_dir, sizeof(full_path_cur_dir)) == NULL)
+  {
     perror("Can't get current directory");
+    return ERR_SYSTEM;
+  }
   else
+  {
     printf("%s\n", full_path_cur_dir);
+  }
+  return SUCCESS;
 }
 
-void handleCd(char output[][1024], size_t amount_tokens)
+int handleCd(char output[][MAX_LINE_LENGTH], size_t amount_tokens)
 {
   char *home_path = NULL;
   if (amount_tokens > 0)
   {
     if (strcmp(output[1], "~") == 0 || amount_tokens == 1)
+    {
       home_path = getenv(HOMEPATH);
+      if (home_path == NULL)
+      {
+        fprintf(stderr, "Couldnt load environment\n");
+        return ERR_FILE;
+      }
+    }
     else
+    {
       home_path = output[1];
+    }
     if (chdir(home_path) != 0)
+    {
       printf("cd: %s: No such file or directory\n", home_path);
+    }
   }
-  else
-    perror("cd failed");
+  return SUCCESS;
 }
 
 void trimSpaces(char trimmed[], const char *str)
@@ -217,7 +301,7 @@ void trimSpaces(char trimmed[], const char *str)
   trimmed[idx] = '\0';
 }
 
-void handleQuotes(char *args, char output[][1024], size_t *amount_tokens)
+void handleQuotes(char *args, char output[][MAX_LINE_LENGTH], size_t *amount_tokens)
 {
   int single_quote_ascii = '\'';
   int double_quote_ascii = '\"';
@@ -297,8 +381,13 @@ void handleQuotes(char *args, char output[][1024], size_t *amount_tokens)
   *amount_tokens = token_idx;
 }
 
-void handleEcho(char output[][1024], size_t amount_tokens)
+int handleEcho(char output[][MAX_LINE_LENGTH], size_t amount_tokens)
 {
+  if (amount_tokens < 2)
+  {
+    fprintf(stderr, "Invalid Input\n");
+    return INVALID_INPUT;
+  }
   for (size_t i = 1; i < amount_tokens; i++)
   {
     printf("%s", output[i]);
@@ -307,10 +396,16 @@ void handleEcho(char output[][1024], size_t amount_tokens)
   }
 
   printf("\n");
+  return SUCCESS;
 }
 
-void handleCat(char output[][1024], size_t amount_tokens)
+int handleCat(char output[][MAX_LINE_LENGTH], size_t amount_tokens)
 {
+  if (amount_tokens < 2)
+  {
+    fprintf(stderr, "Invalid Input\n");
+    return INVALID_INPUT;
+  }
   for (size_t i = 1; i < amount_tokens; i++)
   {
     FILE *file_ptr = fopen(output[i], "r");
@@ -320,7 +415,7 @@ void handleCat(char output[][1024], size_t amount_tokens)
       continue;
     }
     size_t read_bytes = 1;
-    char text_in_file[1024];
+    char text_in_file[MAX_LINE_LENGTH];
     while ((read_bytes = fread(text_in_file, sizeof(char), sizeof(text_in_file) - 1, file_ptr)) != 0)
     {
       text_in_file[read_bytes] = '\0';
@@ -328,9 +423,10 @@ void handleCat(char output[][1024], size_t amount_tokens)
     }
     fclose(file_ptr);
   }
+  return SUCCESS;
 }
 
-int redirect_output(char output[][1024], size_t *amount_tokens, int *target_fd, bool *redirected, int *saved_fd)
+int redirect_output(char output[][MAX_LINE_LENGTH], size_t *amount_tokens, int *target_fd, bool *redirected, int *saved_fd)
 {
   bool append = false;
   for (size_t i = 1; i < (*amount_tokens) - 1; i++) // redirection operator cant be on first nor on last index
@@ -349,7 +445,7 @@ int redirect_output(char output[][1024], size_t *amount_tokens, int *target_fd, 
     if (*saved_fd == -1)
     {
       perror("Dup failed");
-      return 3;
+      return ERR_DUP;
     }
     int flags = O_WRONLY | O_CREAT;
     if (append)
@@ -362,14 +458,14 @@ int redirect_output(char output[][1024], size_t *amount_tokens, int *target_fd, 
     {
       perror("No such file or directory");
       close(*saved_fd);
-      return 2;
+      return ERR_FILE;
     }
     if (dup2(fd, *target_fd) == -1)
     {
       perror("Error occurred while setting the file descriptors");
       close(fd);
       close(*saved_fd);
-      return 1;
+      return ERR_DUP;
     }
     close(fd);
     *amount_tokens = i;
@@ -377,10 +473,10 @@ int redirect_output(char output[][1024], size_t *amount_tokens, int *target_fd, 
     *redirected = true;
     break;
   }
-  return 0;
+  return SUCCESS;
 }
 
-void handleHistory(char output[][1024], size_t amount_tokens)
+int handleHistory(char output[][MAX_LINE_LENGTH], size_t amount_tokens)
 {
   // implementation by myself
   // char *endptr;
@@ -404,11 +500,13 @@ void handleHistory(char output[][1024], size_t amount_tokens)
   // }
   // implementation with readline library
   if (history_length == 0)
-    return;
+    return SUCCESS;
   size_t start_index = history_base; // history get has 1 based indices
   size_t end_index = history_base + history_length - 1;
   if (amount_tokens == 1) // user just typed history
+  {
     start_index = 1;
+  }
   else if (amount_tokens == 2)
   {
     char *endptr = NULL;
@@ -416,10 +514,12 @@ void handleHistory(char output[][1024], size_t amount_tokens)
     if (*endptr != '\0')
     {
       fprintf(stderr, "Invalid number\n");
-      return;
+      return INVALID_INPUT;
     }
     if ((size_t)convert_commands_show < (size_t)history_length)
+    {
       start_index = (size_t)history_length - (size_t)convert_commands_show + 1;
+    }
   }
   else if (amount_tokens == 3)
   {
@@ -428,15 +528,27 @@ void handleHistory(char output[][1024], size_t amount_tokens)
       int fd = open(output[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
       if (fd == -1)
       {
-        fprintf(stderr, "open");
-        return;
+        fprintf(stderr, "open failed");
+        return ERR_FILE;
       }
       for (size_t i = start_index; i < end_index + 1; i++)
       {
         HIST_ENTRY *entry = history_get(i);
         if (entry != NULL && entry->line != NULL)
-          write(fd, entry->line, strlen(entry->line));
-        write(fd, "\n", sizeof(char));
+        {
+          ssize_t bytes_written = write(fd, entry->line, strlen(entry->line));
+          if (bytes_written == -1)
+          {
+            perror("Writing failed");
+            return ERR_WRITE;
+          }
+        }
+        ssize_t bytes_written = write(fd, "\n", sizeof(char));
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
       }
       close(fd);
     }
@@ -445,8 +557,8 @@ void handleHistory(char output[][1024], size_t amount_tokens)
       int fd = open(output[2], O_RDONLY, 0644);
       if (fd == -1)
       {
-        fprintf(stderr, "open");
-        return;
+        perror("open failed");
+        return ERR_FILE;
       }
       char buffer[100];
       char line[100];
@@ -478,34 +590,58 @@ void handleHistory(char output[][1024], size_t amount_tokens)
       int fd = open(output[2], O_RDWR | O_APPEND, 0644);
       if (fd == -1)
       {
-        fprintf(stderr, "open");
-        return;
+        perror("open failed");
+        return ERR_FILE;
       }
       off_t bytes_moved = lseek(fd, 0, SEEK_END);
       if (bytes_moved > 0) // check if it moved, else it means file is empty
       {
         lseek(fd, -1, SEEK_END); // this is possible since i tested it before
         char last_char;
-        read(fd, &last_char, sizeof(char));
+        ssize_t bytes_read = read(fd, &last_char, sizeof(char));
+        if (bytes_read == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
         if (last_char != '\n')
-          write(fd, "\n", sizeof(char));
+        {
+          ssize_t bytes_written = write(fd, "\n", sizeof(char));
+          if (bytes_written == -1)
+          {
+            perror("Writing failed");
+            return ERR_WRITE;
+          }
+        }
       }
 
       for (size_t i = start_index; i < end_index + 1; i++)
       {
         HIST_ENTRY *entry = history_get(i);
         if (entry != NULL && entry->line != NULL)
-          write(fd, entry->line, strlen(entry->line));
-        write(fd, "\n", sizeof(char));
+        {
+          ssize_t bytes_written = write(fd, entry->line, strlen(entry->line));
+          if (bytes_written == -1)
+          {
+            perror("Writing failed");
+            return ERR_WRITE;
+          }
+        }
+        ssize_t bytes_written = write(fd, "\n", sizeof(char));
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
       }
       close(fd);
     }
-    return;
+    return SUCCESS;
   }
   else
   {
     fprintf(stderr, "Invalid amount of tokens\n");
-    return;
+    return INVALID_INPUT;
   }
   for (size_t i = start_index; i < end_index + 1; i++)
   {
@@ -513,6 +649,7 @@ void handleHistory(char output[][1024], size_t amount_tokens)
     if (entry != NULL && entry->line != NULL)
       printf("  %zu  %s\n", i, entry->line);
   }
+  return SUCCESS;
 }
 
 int loadHistory(char history_path[])
@@ -521,15 +658,20 @@ int loadHistory(char history_path[])
   if (environment == NULL)
   {
     fprintf(stderr, "Couldnt load environment\n");
-    return 1;
+    return ERR_SYSTEM;
   }
-  snprintf(history_path, 1024, "%s/.customshell_history", environment);
+  int ret = snprintf(history_path, MAX_LINE_LENGTH, "%s/.customshell_history", environment);
+  if (ret < 0)
+  {
+    fprintf(stderr, "snprintf failed\n");
+    return ERR_WRITE;
+  }
 
   int fd = open(history_path, O_CREAT | O_RDONLY, 0600); // only user can read/write
   if (fd == -1)
   {
-    fprintf(stderr, "open");
-    return 1;
+    fprintf(stderr, "Open failed");
+    return ERR_FILE;
   }
   char buffer[100];
   char line[100];
@@ -555,7 +697,7 @@ int loadHistory(char history_path[])
     add_history(line);
   }
   close(fd);
-  return 0;
+  return SUCCESS;
 }
 
 void addToHistory(char *input)
@@ -564,21 +706,264 @@ void addToHistory(char *input)
   add_history(input);
 }
 
+int handleTabInput(char *line, size_t *length, bool *pressed_tab)
+{
+  size_t length_before_argument = 0;
+  size_t index = 0;
+  char argument[MAX_LINE_LENGTH];
+  for (size_t i = 0; i < *length; i++)
+  {
+    if (i == 0)
+    {
+      while (line[i++] != ' ') // skip
+        length_before_argument++;
+      length_before_argument++;
+    }
+    argument[index++] = line[i];
+  }
+  argument[index] = '\0';
+  char full_path_cur_dir[MAX_LINE_LENGTH];
+  getcwd(full_path_cur_dir, sizeof(full_path_cur_dir));
+
+  DIR *directory;
+  struct dirent *entry;
+  directory = opendir(full_path_cur_dir);
+  if (directory == NULL)
+  {
+    perror("Error opening directory\n");
+    return ERR_FILE;
+  }
+  char completed_file[MAX_LINE_LENGTH] = "";
+  char matches[MAX_MATCHES][MAX_LINE_LENGTH];
+  size_t match_count = 0;
+  size_t cur_highest_counter = 0;
+  while ((entry = readdir(directory)) != NULL)
+  {
+    char *file_name = entry->d_name;
+    size_t matching_chars = 0;
+    if (strlen(file_name) >= strlen(argument))
+    {
+      for (size_t i = 0; i < strlen(argument); i++)
+      {
+        if (file_name[i] == argument[i])
+        {
+          matching_chars++;
+        }
+        else // there was a char that didnt match so not a candidate
+        {
+          matching_chars = 0;
+          break;
+        }
+      }
+      if (matching_chars != 0)
+      {
+        int ret = 0;
+        if (cur_highest_counter == matching_chars)
+        {
+          ret = snprintf(matches[match_count++], strlen(file_name) + 1, "%s", file_name);
+          if (ret < 0)
+          {
+            fprintf(stderr, "snprintf failed\n");
+            return ERR_WRITE;
+          }
+          completed_file[0] = '\0';
+        }
+        else if (cur_highest_counter < matching_chars)
+        {
+          ret = snprintf(completed_file, strlen(file_name) + 1, "%s", file_name);
+          if (ret < 0)
+          {
+            fprintf(stderr, "snprintf failed\n");
+            return ERR_WRITE;
+          }
+          for (size_t i = 0; i < match_count; i++)
+          {
+            matches[i][0] = '\0';
+          }
+          ret = snprintf(matches[0], strlen(file_name) + 1, "%s", file_name);
+          if (ret < 0)
+          {
+            fprintf(stderr, "snprintf failed\n");
+            return ERR_WRITE;
+          }
+          match_count = 1;
+          cur_highest_counter = matching_chars;
+        }
+      }
+    }
+  }
+  if (closedir(directory) == -1)
+  {
+    perror("Error closing directory\n");
+    return ERR_FILE;
+  }
+  if (completed_file[0] == '\0')
+  {
+    if (*pressed_tab == false)
+    {
+      ssize_t bytes_written = write(STDOUT_FILENO, "\x07", sizeof(char));
+      if (bytes_written == -1)
+      {
+        perror("Writing failed");
+        return ERR_WRITE;
+      }
+      *pressed_tab = true;
+      return RESULT_CONTINUE;
+    }
+    else
+    {
+      if (match_count != 0)
+      {
+        printf("\n");
+        for (size_t i = 0; i < match_count; i++)
+        {
+          printf("%s  ", matches[i]);
+        }
+        printf("\n");
+        ssize_t bytes_written = write(STDOUT_FILENO, "\r\033[K$ ", 6);
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
+        bytes_written = write(STDOUT_FILENO, line, sizeof(char) * strlen(line));
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
+      }
+      return RESULT_CONTINUE;
+    }
+  }
+  index = 0;
+  *length = length_before_argument + strlen(completed_file);
+  size_t i = 0;
+  for (i = length_before_argument; i < *length; i++)
+  {
+    line[i] = completed_file[index++];
+  }
+  line[i] = '\0';
+  ssize_t bytes_written = write(STDOUT_FILENO, "\r\033[K$ ", 6);
+  if (bytes_written == -1)
+  {
+    perror("Writing failed");
+    return ERR_WRITE;
+  }
+  bytes_written = write(STDOUT_FILENO, line, sizeof(char) * strlen(line));
+  if (bytes_written == -1)
+  {
+    perror("Writing failed");
+    return ERR_WRITE;
+  }
+
+  return SUCCESS;
+}
+
+int handleArrowInput(char *line, size_t *length, size_t *history_index)
+{
+  char c = '\0';
+  read(STDIN_FILENO, &c, sizeof(char));
+  if (c == '[')
+  {
+    read(STDIN_FILENO, &c, sizeof(char));
+    if (c == 'A')
+    {
+      // arrow up
+      if (*history_index < (size_t)history_length)
+      {
+        (*history_index)++;
+        ssize_t bytes_written = write(STDOUT_FILENO, "\r\033[K$ ", 6);
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
+      }
+      else
+        return RESULT_CONTINUE;
+      HIST_ENTRY *list = history_get(history_base + history_length - (*history_index));
+      if (list != NULL)
+      {
+        ssize_t bytes_written = write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
+      }
+      else
+      {
+        fprintf(stderr, "history_get failed");
+        return ERR_FILE;
+      }
+      strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
+      *length = strlen(list->line);
+    }
+    else if (c == 'B')
+    {
+      if (*history_index > 1)
+      {
+        (*history_index)--;
+        ssize_t bytes_written = write(STDOUT_FILENO, "\r\033[K$ ", 6);
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
+      }
+      else
+      {
+        ssize_t bytes_written = write(STDOUT_FILENO, "\r\033[K$ ", 6); // \r move cursor to beginning, rest is to clear terminal from cursor to end of line
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
+        *history_index = 0;
+        *length = 0;
+        return RESULT_CONTINUE;
+      }
+      HIST_ENTRY *list = history_get(history_base + history_length - (*history_index));
+      if (list != NULL)
+      {
+        ssize_t bytes_written = write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
+      }
+      else
+      {
+        fprintf(stderr, "history_get failed\n");
+        return ERR_FILE;
+      }
+      strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
+      *length = strlen(list->line);
+    }
+    else
+      fprintf(stderr, "Unknown input\n"); // means input started with Esc[ but something different followed
+  }
+  return SUCCESS;
+}
+
 int readUserInput(char *line, size_t *length, size_t capacity)
 {
   char c = '0';
   size_t history_index = 0;
   bool pressed_tab = false;
+  int ret_value = 0;
   while (*length < capacity - 1)
   {
     ssize_t ret_val = read(STDIN_FILENO, &c, sizeof(char));
     if (ret_val == -1)
     {
-      fprintf(stderr, "Reading failed\n");
-      return 1;
+      perror("Reading failed");
+      return ERR_READ;
     }
     else if (c == CTRLD_ASCII) // eof
-      return 1;
+      return RESULT_EOF;
     else if (c == '\n' || c == '\r')
       break;
     else if (c == 127) // backwards
@@ -586,172 +971,44 @@ int readUserInput(char *line, size_t *length, size_t capacity)
       if (*length > 0)
       {
         line[--(*length)] = '\0';
-        write(STDOUT_FILENO, "\b \b", sizeof(char) * 3); // \b move cursor one position left, print a space over old char, ove cursor one position left again
+        ssize_t bytes_written = write(STDOUT_FILENO, "\b \b", sizeof(char) * 3); // \b move cursor one position left, print a space over old char, ove cursor one position left again
+        if (bytes_written == -1)
+        {
+          perror("Writing failed");
+          return ERR_WRITE;
+        }
       }
     }
     else if (c == 27) // add arrow up/down history
     {
-      read(STDIN_FILENO, &c, sizeof(char));
-      if (c == '[')
-      {
-        read(STDIN_FILENO, &c, sizeof(char));
-        if (c == 'A')
-        {
-          // arrow up
-          if (history_index < (size_t)history_length)
-          {
-            history_index++;
-            write(STDOUT_FILENO, "\r\033[K$ ", 6);
-          }
-          else
-            continue;
-          HIST_ENTRY *list = history_get(history_base + history_length - history_index);
-          if (list != NULL)
-            write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
-          strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
-          *length = strlen(list->line);
-        }
-        else if (c == 'B')
-        {
-          if (history_index > 1)
-          {
-            history_index--;
-            write(STDOUT_FILENO, "\r\033[K$ ", 6);
-          }
-          else
-          {
-            write(STDOUT_FILENO, "\r\033[K$ ", 6); // \r move cursor to beginning, rest is to clear terminal from cursor to end of line
-            history_index = 0;
-            *length = 0;
-            continue;
-          }
-          HIST_ENTRY *list = history_get(history_base + history_length - history_index);
-          if (list != NULL)
-            write(STDOUT_FILENO, list->line, sizeof(char) * (strlen(list->line)));
-          strcpy(line, list->line); // since list->line is a normal c string, i can omit putting the \0
-          *length = strlen(list->line);
-        }
-        else
-          fprintf(stderr, "Unknown input\n"); // means input started with Esc[ but something different followed
-      }
+      ret_value = handleArrowInput(line, length, &history_index);
+      if (ret_value == RESULT_CONTINUE)
+        continue;
+      else if (ret_value == ERR_WRITE)
+        return ERR_WRITE;
     }
     else if (c == '\t')
     {
-      size_t length_before_argument = 0;
-      size_t index = 0;
-      char argument[1024];
-      for (size_t i = 0; i < *length; i++)
-      {
-        if (i == 0)
-        {
-          while (line[i++] != ' ') // skip
-            length_before_argument++;
-          length_before_argument++;
-        }
-        argument[index++] = line[i];
-      }
-      argument[index] = '\0';
-      char full_path_cur_dir[1024];
-      getcwd(full_path_cur_dir, sizeof(full_path_cur_dir));
-
-      DIR *directory;
-      struct dirent *entry;
-      directory = opendir(full_path_cur_dir);
-      if (directory == NULL)
-      {
-        perror("Error opening directory\n");
-        return 1;
-      }
-      char completed_file[1024] = "";
-      char matches[MAX_MATCHES][1024];
-      size_t match_count = 0;
-      size_t cur_highest_counter = 0;
-      while ((entry = readdir(directory)) != NULL)
-      {
-        char *file_name = entry->d_name;
-        size_t matching_chars = 0;
-        if (strlen(file_name) >= strlen(argument))
-        {
-          for (size_t i = 0; i < strlen(argument); i++)
-          {
-            if (file_name[i] == argument[i])
-            {
-              matching_chars++;
-            }
-            else // there was a char that didnt match so not a candidate
-            {
-              matching_chars = 0;
-              break;
-            }
-          }
-          if (matching_chars != 0)
-          {
-            if (cur_highest_counter == matching_chars)
-            {
-              snprintf(matches[match_count++], strlen(file_name) + 1, "%s", file_name);
-              completed_file[0] = '\0';
-            }
-            else if (cur_highest_counter < matching_chars)
-            {
-              snprintf(completed_file, strlen(file_name) + 1, "%s", file_name);
-              for (size_t i = 0; i < match_count; i++)
-              {
-                matches[i][0] = '\0';
-              }
-              snprintf(matches[0], strlen(file_name) + 1, "%s", file_name);
-              match_count = 1;
-              cur_highest_counter = matching_chars;
-            }
-          }
-        }
-      }
-      if (closedir(directory) == -1)
-      {
-        perror("Error closing directory\n");
-        return 1;
-      }
-      if (completed_file[0] == '\0')
-      {
-        if (pressed_tab == false)
-        {
-          write(STDOUT_FILENO, "\x07", sizeof(char));
-          pressed_tab = true;
-          continue;
-        }
-        else
-        {
-          if (match_count != 0)
-          {
-            printf("\n");
-            for (size_t i = 0; i < match_count; i++)
-            {
-              printf("%s  ", matches[i]);
-            }
-            printf("\n");
-            write(STDOUT_FILENO, "\r\033[K$ ", 6);
-            write(STDOUT_FILENO, line, sizeof(char) * strlen(line));
-          }
-          continue;
-        }
-      }
-      index = 0;
-      *length = length_before_argument + strlen(completed_file);
-      size_t i = 0;
-      for (i = length_before_argument; i < *length; i++)
-      {
-        line[i] = completed_file[index++];
-      }
-      line[i] = '\0';
-      write(STDOUT_FILENO, "\r\033[K$ ", 6);
-      write(STDOUT_FILENO, line, sizeof(char) * strlen(line));
+      ret_value = handleTabInput(line, length, &pressed_tab);
+      if (ret_value == ERR_FILE)
+        return ERR_FILE;
+      else if (ret_value == ERR_WRITE)
+        return ERR_WRITE;
+      else if (ret_value == RESULT_CONTINUE)
+        continue;
     }
     else
     {
       line[(*length)++] = c;
-      write(STDOUT_FILENO, &c, sizeof(char));
+      ssize_t bytes_written = write(STDOUT_FILENO, &c, sizeof(char));
+      if (bytes_written == -1)
+      {
+        perror("Writing failed");
+        return ERR_WRITE;
+      }
     }
   }
-  return 0;
+  return SUCCESS;
 }
 
 void setTerminalMode(struct termios *old_attr)
@@ -770,15 +1027,25 @@ int add_to_history(char *line_copy, char history_path[])
   int fd = open(history_path, O_WRONLY | O_APPEND, 0644);
   if (fd == -1)
   {
-    fprintf(stderr, "History couldnt be opened\n");
-    return 1;
+    perror("History couldnt be opened");
+    return ERR_FILE;
   }
-  write(fd, line_copy, strlen(line_copy));
-  write(fd, "\n", sizeof(char));
-  return 0;
+  ssize_t bytes_read = write(fd, line_copy, strlen(line_copy));
+  if (bytes_read == -1)
+  {
+    perror("Writing failed");
+    return ERR_WRITE;
+  }
+  bytes_read = write(fd, "\n", sizeof(char));
+  if (bytes_read == -1)
+  {
+    perror("Writing failed");
+    return ERR_WRITE;
+  }
+  return SUCCESS;
 }
 
-int handleDeclare(char output[][1024], DeclareVariable *new_variable, size_t *variable_count)
+int handleDeclare(char output[][MAX_LINE_LENGTH], DeclareVariable *new_variable, size_t *variable_count)
 {
   if ('0' <= output[1][0] && '9' >= output[1][0])
   {
@@ -787,11 +1054,22 @@ int handleDeclare(char output[][1024], DeclareVariable *new_variable, size_t *va
   char *line = strchr(output[1], '='); // returns a char* to the first ocurrence of =
   if (line != NULL)
   {
-    if (*variable_count >= 1024)
-      return 1;
+    if (*variable_count >= MAX_LINE_LENGTH)
+      return INVALID_INPUT;
     *line = '\0';
-    snprintf(new_variable[*variable_count].type, sizeof(new_variable[*variable_count].type), "%s", output[1]);
-    snprintf(new_variable[*variable_count].name, sizeof(new_variable[*variable_count].name), "%s", line + 1); // goes to first char of word and reads until \0
+    int ret = 0;
+    ret = snprintf(new_variable[*variable_count].type, sizeof(new_variable[*variable_count].type), "%s", output[1]);
+    if (ret < 0)
+    {
+      fprintf(stderr, "snprintf failed\n");
+      return ERR_WRITE;
+    }
+    ret = snprintf(new_variable[*variable_count].name, sizeof(new_variable[*variable_count].name), "%s", line + 1); // goes to first char of word and reads until \0
+    if (ret < 0)
+    {
+      fprintf(stderr, "snprintf failed\n");
+      return ERR_WRITE;
+    }
     (*variable_count)++;
   }
   else if (strcmp(output[1], "-p") == 0)
@@ -801,7 +1079,7 @@ int handleDeclare(char output[][1024], DeclareVariable *new_variable, size_t *va
       if (strcmp(new_variable[i].type, output[2]) == 0)
       {
         printf("declare -- %s=%s\n", new_variable[i].type, new_variable[i].name);
-        return 0;
+        return SUCCESS;
       }
     }
     printf("declare: %s: not found\n", output[2]);
@@ -810,11 +1088,12 @@ int handleDeclare(char output[][1024], DeclareVariable *new_variable, size_t *va
   {
     printf("declare: variable: not found");
   }
-  return 0;
+  return SUCCESS;
 }
 
-int variable_expansion(char output[][1024], size_t *amount_tokens, DeclareVariable *variables, size_t variable_count)
+int variableExpansion(char output[][MAX_LINE_LENGTH], size_t *amount_tokens, DeclareVariable *variables, size_t variable_count)
 {
+  int ret = 0;
   for (size_t i = 1; i < *amount_tokens; i++)
   {
     if (output[i][0] == '$')
@@ -826,25 +1105,46 @@ int variable_expansion(char output[][1024], size_t *amount_tokens, DeclareVariab
         if (closing_brace == NULL)
         {
           fprintf(stderr, "No valid input\n");
-          return 1;
+          return INVALID_INPUT;
         }
         *closing_brace = '\0';
-        char after_closing_bracket[1024] = "";
+        char after_closing_bracket[MAX_LINE_LENGTH] = "";
         if (*(closing_brace + 1) != '\0')
         {
-          snprintf(after_closing_bracket, sizeof(after_closing_bracket), "%s", closing_brace + 1);
+          ret = snprintf(after_closing_bracket, sizeof(after_closing_bracket), "%s", closing_brace + 1);
+          if (ret < 0)
+          {
+            fprintf(stderr, "snprintf failed\n");
+            return ERR_WRITE;
+          }
         }
         char *variable_name = output[i] + 2;
         for (size_t j = 0; j < variable_count; j++)
         {
           if (strcmp(variable_name, variables[j].type) == 0)
           {
-            snprintf(output[i], sizeof(output[i]), "%s%s", variables[j].name, after_closing_bracket);
+            size_t bytes_needed = strlen(variables[j].name) + strlen(after_closing_bracket) + 1;
+            if (bytes_needed > MAX_LINE_LENGTH)
+            {
+              fprintf(stderr, "Expanded variable is too long\n");
+              return INVALID_INPUT;
+            }
+            ret = snprintf(output[i], sizeof(output[i]), "%s%s", variables[j].name, after_closing_bracket);
+            if (ret < 0)
+            {
+              fprintf(stderr, "snprintf failed\n");
+              return ERR_WRITE;
+            }
             break;
           }
           else
           {
-            snprintf(output[i], sizeof(output[i]), "%s", after_closing_bracket);
+            ret = snprintf(output[i], sizeof(output[i]), "%s", after_closing_bracket);
+            if (ret < 0)
+            {
+              fprintf(stderr, "snprintf failed\n");
+              return ERR_WRITE;
+            }
             break;
           }
         }
@@ -854,35 +1154,75 @@ int variable_expansion(char output[][1024], size_t *amount_tokens, DeclareVariab
         for (size_t j = 0; j < variable_count; j++)
         {
           if (strcmp(output[i] + 1, variables[j].type) == 0)
-            snprintf(output[i], sizeof(output[i]), "%s", variables[j].name);
+          {
+            ret = snprintf(output[i], sizeof(output[i]), "%s", variables[j].name);
+            if (ret < 0)
+            {
+              fprintf(stderr, "snprintf failed\n");
+              return ERR_WRITE;
+            }
+          }
           break;
         }
       }
     }
   }
-  return 0;
+  return SUCCESS;
 }
 
-int executingCommand(char output[][1024], char *command, size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
+int executingCommand(char output[][MAX_LINE_LENGTH], char *command, size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
 {
+  int ret = 0;
   if (strcmp(command, "exit") == 0)
-    return 1;
+    return EXIT;
   else if (strcmp(command, "echo") == 0)
-    handleEcho(output, amount_tokens);
+  {
+    ret = handleEcho(output, amount_tokens);
+    if (ret == INVALID_INPUT)
+      return INVALID_INPUT;
+  }
   else if (strcmp(command, "type") == 0)
-    handleType(output, amount_tokens);
+  {
+    ret = handleType(output, amount_tokens);
+    if (ret == ERR_MEMORY)
+      return ERR_MEMORY;
+    else if (ret == ERR_SYSTEM)
+      return ERR_SYSTEM;
+    else if (ret == INVALID_INPUT)
+      return INVALID_INPUT;
+  }
   else if (strcmp(command, "pwd") == 0)
-    handlePwd();
+  {
+    ret = handlePwd();
+    if (ret == ERR_SYSTEM)
+      return ERR_SYSTEM;
+  }
   else if (strcmp(command, "cd") == 0)
     handleCd(output, amount_tokens);
   else if (strcmp(command, "cat") == 0)
-    handleCat(output, amount_tokens);
+  {
+    ret = handleCat(output, amount_tokens);
+    if (ret == INVALID_INPUT)
+      return INVALID_INPUT;
+  }
   else if (strcmp(command, "history") == 0)
   {
-    handleHistory(output, amount_tokens);
+    ret = handleHistory(output, amount_tokens);
+    if (ret == INVALID_INPUT)
+      return INVALID_INPUT;
+    else if (ret == ERR_FILE)
+      return ERR_FILE;
+    else if (ret == ERR_WRITE)
+      return ERR_WRITE;
   }
   else if (strcmp(command, "declare") == 0)
-    handleDeclare(output, variable, &variable_count);
+  {
+    ret = handleDeclare(output, variable, &variable_count);
+    if (ret == INVALID_INPUT)
+      return INVALID_INPUT;
+    else if (ret == ERR_WRITE)
+      return ERR_WRITE;
+  }
   else if (strcmp(command, "") == 0)
   {
   }
@@ -895,13 +1235,13 @@ int executingCommand(char output[][1024], char *command, size_t amount_tokens, D
     else
       fprintf(stderr, "%s: command not found\n", command);
   }
-  return 0;
+  return SUCCESS;
 }
 
-int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
+int pipelineControl(char output[][MAX_LINE_LENGTH], size_t amount_tokens, DeclareVariable variable[], size_t variable_count)
 {
   size_t amount_pipelines = 0;
-  char pipeline_seperated_output[MAX_PIPELINES][MAX_ARGUMENTS][1024];
+  char pipeline_seperated_output[MAX_PIPELINES][MAX_ARGUMENTS][MAX_LINE_LENGTH];
   int pipeline_token_count[MAX_PIPELINES];
   for (size_t i = 0; i < amount_tokens; i++)
   {
@@ -911,7 +1251,7 @@ int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable v
     }
   }
   if (amount_pipelines == 0)
-    return 0;
+    return SUCCESS;
   else
   {
     size_t pipeline_index = 0;
@@ -925,7 +1265,12 @@ int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable v
         continue;
       }
       pipeline_token_count[pipeline_index]++;
-      snprintf(pipeline_seperated_output[pipeline_index][argument_index++], strlen(output[i]) + 1, "%s", output[i]);
+      int ret = snprintf(pipeline_seperated_output[pipeline_index][argument_index++], strlen(output[i]) + 1, "%s", output[i]);
+      if (ret < 0)
+      {
+        fprintf(stderr, "snprintf failed\n");
+        return ERR_WRITE;
+      }
     }
     // 3d array filled
     // creating pipes
@@ -937,7 +1282,7 @@ int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable v
       if (pipe(fd[i]) == -1)
       {
         fprintf(stderr, "Pipe creation failed\n");
-        return 1;
+        return ERR_PIPE;
       }
     }
     for (size_t i = 0; i < commands_count; i++)
@@ -946,7 +1291,7 @@ int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable v
       if (pid[i] == -1)
       {
         fprintf(stderr, "Forking failed\n");
-        return 1;
+        return ERR_FORK;
       }
       if (pid[i] == 0)
       {
@@ -960,7 +1305,7 @@ int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable v
             close(fd[j][0]);
             close(fd[j][1]);
           }
-          
+
           executingCommand(pipeline_seperated_output[i], pipeline_seperated_output[i][0], pipeline_token_count[i], variable, variable_count);
           exit(0);
         }
@@ -997,17 +1342,14 @@ int pipelineControl(char output[][1024], size_t amount_tokens, DeclareVariable v
       close(fd[i][0]);
       close(fd[i][1]);
     }
-    
 
     for (size_t i = 0; i < commands_count; i++)
     {
       waitpid(pid[i], NULL, 0);
     }
-    
-
   }
 
-  return 2;
+  return RESULT_CONTINUE;
 }
 
 void customFree(char *line, char *line_copy)
@@ -1018,42 +1360,73 @@ void customFree(char *line, char *line_copy)
 
 void handle_sigint(int sig)
 {
-  (void) sig;
+  (void)sig;
   write(STDOUT_FILENO, "\n$ ", 3);
 }
 
-int main(int argc, char *argv[])
+void setup_signals(void)
 {
-  char history_path[1024];
-  int ret_value = loadHistory(history_path);
-  if (ret_value != 0)
-    return 1;
-  DeclareVariable variable[1024];
-  size_t variable_count = 0;
-  struct termios old_attr;
-  setTerminalMode(&old_attr);
-  using_history();
   struct sigaction sa;
   sa.sa_flags = SA_RESTART;
   sa.sa_handler = &handle_sigint;
-  sa.sa_flags = 0;
   sigaction(SIGINT, &sa, NULL);
+}
+
+int main(void)
+{
+  int ret_value = 0;
+  char history_path[MAX_LINE_LENGTH];
+  ret_value = loadHistory(history_path);
+  switch (ret_value)
+  {
+  case ERR_SYSTEM:
+    return ERR_SYSTEM;
+  case ERR_FILE:
+    return ERR_FILE;
+  case ERR_WRITE:
+    return ERR_WRITE;
+  default:
+    break;
+  }
+
+  DeclareVariable variable[MAX_LINE_LENGTH];
+  size_t variable_count = 0;
+
+  struct termios old_attr;
+  setTerminalMode(&old_attr);
+
+  using_history();
+  setup_signals();
   while (1)
   {
     setbuf(stdout, NULL);
 
     printf("$ ");
     size_t length = 0;
-    size_t capacity = 100;
+    size_t capacity = MAX_LINE_LENGTH;
     char *line = malloc(sizeof(char) * capacity);
     if (line == NULL)
-      return 1;
-    int ret_value = readUserInput(line, &length, capacity);
-    if (ret_value != 0)
+      return ERR_MEMORY;
+    ret_value = readUserInput(line, &length, capacity);
+    if (ret_value != SUCCESS)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       free(line);
-      return 1;
+      switch (ret_value)
+      {
+      case ERR_READ:
+        return ERR_READ;
+      case RESULT_EOF:
+        return RESULT_EOF;
+      case ERR_WRITE:
+        return ERR_WRITE;
+      case ERR_FILE:
+        return ERR_FILE;
+      case RESULT_CONTINUE:
+        continue;
+      default:
+        break;
+      }
     }
 
     line[length] = '\0';
@@ -1061,7 +1434,7 @@ int main(int argc, char *argv[])
     char *line_copy = strdup(line);
     // addToHistory(input_history, line_copy, &counting_input);
 
-    char output[10][1024];
+    char output[MAX_ARGUMENTS][MAX_LINE_LENGTH];
     size_t amount_tokens = 0;
     handleQuotes(line, output, &amount_tokens);
     output[amount_tokens][0] = '\0';
@@ -1069,25 +1442,36 @@ int main(int argc, char *argv[])
     int saved_fd = -1;
     int target_fd = -1;
     bool redirected = false;
-    ret_value = variable_expansion(output, &amount_tokens, variable, variable_count);
-    if (ret_value != 0)
+    ret_value = variableExpansion(output, &amount_tokens, variable, variable_count);
+    if (ret_value != SUCCESS)
     {
+      tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
-      return 1;
+      if (ret_value == ERR_WRITE)
+        return ERR_WRITE;
+      else
+        return INVALID_INPUT;
     }
     ret_value = redirect_output(output, &amount_tokens, &target_fd, &redirected, &saved_fd);
-    if (ret_value != 0)
+    if (ret_value == ERR_DUP || ret_value == ERR_FILE)
     {
+      tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
       return 1;
     }
     ret_value = pipelineControl(output, amount_tokens, variable, variable_count);
-    if (ret_value == 1)
+    if (ret_value == ERR_FORK || ret_value == ERR_PIPE || ret_value == ERR_WRITE)
     {
+      tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
-      return 1;
+      if (ret_value == ERR_FORK)
+        return ERR_FORK;
+      else if (ret_value == ERR_PIPE)
+        return ERR_PIPE;
+      else
+        return ERR_WRITE;
     }
-    else if (ret_value == 2)
+    else if (ret_value == RESULT_CONTINUE)
     {
       customFree(line, line_copy);
       continue;
@@ -1096,17 +1480,39 @@ int main(int argc, char *argv[])
       add_to_history(line_copy, history_path);
 
     ret_value = executingCommand(output, command, amount_tokens, variable, variable_count);
-    if (ret_value != 0)
+    if (ret_value != SUCCESS)
     {
+      tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
-      return 1;
+      switch (ret_value)
+      {
+      case EXIT:
+        return EXIT;
+      case INVALID_INPUT:
+        return INVALID_INPUT;
+      case ERR_MEMORY:
+        return ERR_MEMORY;
+      case ERR_SYSTEM:
+        return ERR_SYSTEM;
+      case ERR_FILE:
+        return ERR_FILE;
+      case ERR_WRITE:
+        return ERR_WRITE;
+      default:
+        break;
+      }
     }
 
     if (redirected)
     {
       fflush(stdout);
       fflush(stderr);
-      dup2(saved_fd, target_fd);
+      if (dup2(saved_fd, target_fd) == -1)
+      {
+        close(saved_fd);
+        customFree(line, line_copy);
+        return ERR_DUP;
+      }
       close(saved_fd);
     }
 
