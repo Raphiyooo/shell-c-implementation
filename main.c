@@ -1377,17 +1377,8 @@ int main(void)
   int ret_value = 0;
   char history_path[MAX_LINE_LENGTH];
   ret_value = loadHistory(history_path);
-  switch (ret_value)
-  {
-  case ERR_SYSTEM:
-    return ERR_SYSTEM;
-  case ERR_FILE:
-    return ERR_FILE;
-  case ERR_WRITE:
-    return ERR_WRITE;
-  default:
-    break;
-  }
+  if (ret_value != SUCCESS)
+    return ret_value;
 
   DeclareVariable variable[MAX_LINE_LENGTH];
   size_t variable_count = 0;
@@ -1412,21 +1403,7 @@ int main(void)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       free(line);
-      switch (ret_value)
-      {
-      case ERR_READ:
-        return ERR_READ;
-      case RESULT_EOF:
-        return RESULT_EOF;
-      case ERR_WRITE:
-        return ERR_WRITE;
-      case ERR_FILE:
-        return ERR_FILE;
-      case RESULT_CONTINUE:
-        continue;
-      default:
-        break;
-      }
+      return ret_value;
     }
 
     line[length] = '\0';
@@ -1447,35 +1424,28 @@ int main(void)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
-      if (ret_value == ERR_WRITE)
-        return ERR_WRITE;
-      else
-        return INVALID_INPUT;
+      return ret_value;
     }
     ret_value = redirect_output(output, &amount_tokens, &target_fd, &redirected, &saved_fd);
-    if (ret_value == ERR_DUP || ret_value == ERR_FILE)
+    if (ret_value != SUCCESS)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
-      return 1;
+      return ret_value;
     }
     ret_value = pipelineControl(output, amount_tokens, variable, variable_count);
     if (ret_value == ERR_FORK || ret_value == ERR_PIPE || ret_value == ERR_WRITE)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
-      if (ret_value == ERR_FORK)
-        return ERR_FORK;
-      else if (ret_value == ERR_PIPE)
-        return ERR_PIPE;
-      else
-        return ERR_WRITE;
+      return ret_value;
     }
     else if (ret_value == RESULT_CONTINUE)
     {
       customFree(line, line_copy);
       continue;
     }
+
     if (strcmp(command, "") != 0)
       add_to_history(line_copy, history_path);
 
@@ -1484,23 +1454,7 @@ int main(void)
     {
       tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
       customFree(line, line_copy);
-      switch (ret_value)
-      {
-      case EXIT:
-        return EXIT;
-      case INVALID_INPUT:
-        return INVALID_INPUT;
-      case ERR_MEMORY:
-        return ERR_MEMORY;
-      case ERR_SYSTEM:
-        return ERR_SYSTEM;
-      case ERR_FILE:
-        return ERR_FILE;
-      case ERR_WRITE:
-        return ERR_WRITE;
-      default:
-        break;
-      }
+      return ret_value;
     }
 
     if (redirected)
