@@ -1,6 +1,6 @@
 # Shell Implementation in C
 
-This project recreates core shell functionality in C, including the terminal and deploying it as an interactive website.
+A Unix-style command shell written from scratch in C
 
 ## Development steps
 
